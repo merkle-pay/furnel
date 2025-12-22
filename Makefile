@@ -1,43 +1,18 @@
-.PHONY: stop down up logs build restart stats workers api health
+.PHONY: up down clean health hash
 
-stop:
-	docker compose stop
+up:
+	docker compose up -d --build
 
 down:
 	docker compose down
 
-up:
-	docker compose up -d
-
-logs:
-	docker compose logs -f
-
-build:
-	docker compose build --no-cache
-
-restart:
-	docker compose restart
-
-prune:
-	docker system prune -a
-
-stats:
-	docker stats --no-stream
-
-workers:
-	docker compose build workers --no-cache && \
-	docker compose up -d workers
-
-api:
-	docker compose build api --no-cache && \
-	docker compose up -d api
+clean:
+	docker compose down -v
+	rm -rf postgres-data temporal-data caddy_data caddy_config
 
 health:
-	@echo "=== Payment Services Health Check ==="
-	@docker compose ps --format "table {{.Name}}\t{{.Status}}"
+	@docker compose ps
 
-temporal-cli:
-	docker compose exec temporal-admin-tools bash
-
-db:
-	docker compose exec postgres psql -U payment -d payment_db
+hash:
+	@read -p "Enter password: " pwd && \
+	docker run --rm caddy:2-alpine caddy hash-password --plaintext "$$pwd"

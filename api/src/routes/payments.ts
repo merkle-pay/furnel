@@ -32,7 +32,7 @@ paymentRoutes.post("/", async (c) => {
 
     // Start the payment workflow
     const handle = await client.workflow.start("paymentWorkflow", {
-      taskQueue: "payment-queue",
+      taskQueue: "furnel-queue",
       workflowId,
       args: [{ amount, currency, recipientId }],
     });

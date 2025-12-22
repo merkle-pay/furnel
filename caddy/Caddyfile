@@ -34,6 +34,6 @@
 
     # Default
     handle {
-        respond "Payment API" 200
+        respond "Furnel API" 200
     }
 }

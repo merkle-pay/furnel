@@ -26,7 +26,7 @@ app.onError((err, c) => {
 
 const port = Number(process.env.PORT) || 3000;
 
-console.log(`Payment API running on port ${port}`);
+console.log(`Furnel API running on port ${port}`);
 
 serve({
   fetch: app.fetch,
