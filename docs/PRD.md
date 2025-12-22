@@ -1,4 +1,6 @@
-# Stablecoin Payment Flow - Product Requirements Document
+# Furnel - Product Requirements Document
+
+> **Furnel** = **F**iat **U**SDC/USDT **R**emittance Tun**NEL**
 
 ## Overview
 
