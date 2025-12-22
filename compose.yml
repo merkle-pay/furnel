@@ -56,38 +56,17 @@ services:
       timeout: 5s
       retries: 5
 
-  # Temporal UI (internal only, proxied via Express)
+  # Temporal UI (protected by Caddy basic auth)
   temporal-ui:
     image: temporalio/ui:2.39.0
     container_name: temporal-ui
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:8008
     networks:
       - payment-network
     depends_on:
       - temporal
     restart: unless-stopped
-
-  # Express Auth Proxy for Temporal UI
-  temporal-ui-proxy:
-    build: ./ui-proxy
-    container_name: temporal-ui-proxy
-    ports:
-      - "127.0.0.1:8008:8008"
-    networks:
-      - payment-network
-    depends_on:
-      - temporal
-      - temporal-ui
-    env_file:
-      - .env
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8008/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   # Temporal Admin Tools
   temporal-admin-tools:
@@ -150,10 +129,12 @@ services:
       - ./caddy_config:/config
     networks:
       - payment-network
+    env_file:
+      - .env
     restart: unless-stopped
     depends_on:
       - api
-      - temporal-ui-proxy
+      - temporal-ui
 
   # PgWeb for database access
   pgweb:
