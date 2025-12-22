@@ -1,0 +1,24 @@
+# Development Caddyfile - no auth required
+:80 {
+    # API routes
+    handle /api/* {
+        reverse_proxy api:3000
+    }
+
+    # Temporal UI (no auth in dev)
+    handle /temporal/* {
+        uri strip_prefix /temporal
+        reverse_proxy temporal-ui:8080
+    }
+
+    # PgWeb (no auth in dev)
+    handle /pgweb/* {
+        uri strip_prefix /pgweb
+        reverse_proxy pgweb:8081
+    }
+
+    # Web frontend (default)
+    handle {
+        reverse_proxy web:3000
+    }
+}

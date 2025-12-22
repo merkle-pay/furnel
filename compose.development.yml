@@ -108,17 +108,27 @@ services:
       context: ./web
       target: dev
     container_name: furnel-web
-    ports:
-      - "3001:3000"
     networks:
       - furnel-network
     depends_on:
       - api
     environment:
       - NODE_ENV=development
-      - VITE_API_URL=http://localhost:3000
     volumes:
       - ./web/src:/app/src
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: furnel-caddy
+    ports:
+      - "80:80"
+    networks:
+      - furnel-network
+    depends_on:
+      - api
+      - web
+    volumes:
+      - ./caddy/Caddyfile.dev:/etc/caddy/Caddyfile
 
   pgweb:
     image: sosedoff/pgweb:latest
