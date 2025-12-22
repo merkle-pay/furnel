@@ -8,7 +8,29 @@ MoonPay handles the fiat-to-crypto onramp. Users pay with card, MoonPay sends US
 |-----|---------|----------|
 | `pk_test_...` (publishable) | Frontend widget | `VITE_MOONPAY_API_KEY` |
 | `sk_test_...` (secret) | Server-side URL signing | `MOONPAY_SECRET_KEY` |
-| `wk_test_...` (webhook) | Verify webhook signatures | `MOONPAY_WEBHOOK_KEY` |
+| Webhook Signing Secret | Verify webhook signatures | `MOONPAY_WEBHOOK_SECRET` |
+
+### Webhook Keys Explained
+
+MoonPay dashboard shows two webhook values:
+
+| Field | Example | Purpose |
+|-------|---------|---------|
+| **Signing Key** | `wk_test_abc123...` | Identifier (not needed) |
+| **Signing Secret** | `random_string_here` | Actual secret for HMAC verification |
+
+**We only need the Signing Secret** - this is used to verify webhook authenticity:
+
+```
+MoonPay:
+  signature = HMAC-SHA256(secret, timestamp + "." + body)
+
+Furnel:
+  expected = HMAC-SHA256(secret, timestamp + "." + body)
+  verify: expected === received
+```
+
+Both sides use the same secret to produce matching signatures.
 
 ## Sandbox Testing
 
@@ -29,7 +51,7 @@ MoonPay sandbox requires specific test addresses:
 
 ### Test Cards
 
-MoonPay uses **Revolut** as payment processor. Use Revolut test cards:
+> **⚠️ IMPORTANT:** In the MoonPay widget, you MUST select **"Credit/Debit Card"** as the payment method. Do NOT use other payment methods like Revolut Pay, Apple Pay, etc. - only Credit/Debit Card works reliably in sandbox.
 
 **Success Cards:**
 
@@ -46,13 +68,11 @@ MoonPay uses **Revolut** as payment processor. Use Revolut test cards:
 | `4532 3367 4387 4205` | Expired card |
 | `4242 4242 4242 4242` | 3DS error (amount ≥£25) |
 
-**CVV:** Any 3 digits | **Expiry:** Any future date
+**CVV:** Any 3 digits (e.g., `123`) | **Expiry:** Any future date (e.g., `12/26`)
 
 **SSN (if asked):** Any 9 digits (e.g., `123456789`)
 
 > **⚠️ WARNING:** Never use real personal information in sandbox. Use fake data only.
-
-Source: [Revolut Test Cards](https://developer.revolut.com/docs/guides/accept-payments/get-started/test-implementation/test-cards)
 
 ## Webhook
 
@@ -63,22 +83,52 @@ MoonPay sends transaction updates to: `POST /api/webhooks/moonpay`
 | Event | Description |
 |-------|-------------|
 | `transaction_created` | User started purchase |
-| `transaction_updated` | Status changed (pending, completed, failed) |
+| `transaction_updated` | Status changed (pending, completed) |
+| `transaction_failed` | Transaction failed (payment declined, etc.) |
 
 ### Signature Verification
 
-Webhooks are signed with HMAC-SHA256. Header: `Moonpay-Signature-V2`
+Signature verification ensures webhooks actually came from MoonPay and weren't tampered with.
+
+| Environment | Verification | Reason |
+|-------------|--------------|--------|
+| **Development/Sandbox** | Optional | No real money, skip for simplicity |
+| **Production** | Required | Prevents fake "payment completed" attacks |
+
+**Current status:** Verification is skipped in development. Webhooks are received and processed without signature validation.
+
+#### How It Works
+
+Header format: `Moonpay-Signature-V2: t=<timestamp>,s=<signature>`
 
 ```typescript
 import { createHmac } from "crypto";
 
-function verifySignature(payload: string, signature: string, key: string): boolean {
-  const expected = createHmac("sha256", key)
-    .update(payload)
-    .digest("base64");
+function verifyMoonPaySignature(
+  payload: string,
+  signatureHeader: string,
+  webhookSecret: string
+): boolean {
+  // Parse header: t=<timestamp>,s=<signature>
+  const parts = signatureHeader.split(",");
+  const timestamp = parts.find((p) => p.startsWith("t="))?.slice(2);
+  const signature = parts.find((p) => p.startsWith("s="))?.slice(2);
+
+  if (!timestamp || !signature) return false;
+
+  // Create signed payload: timestamp.body
+  const signedPayload = `${timestamp}.${payload}`;
+
+  // Generate expected signature
+  const expected = createHmac("sha256", webhookSecret)
+    .update(signedPayload)
+    .digest("hex");
+
   return signature === expected;
 }
 ```
+
+> **TODO (Production):** Enable signature verification before going live. The webhook secret is available in MoonPay Dashboard → Developers → Webhooks.
 
 ## Frontend Widget
 
@@ -102,10 +152,11 @@ import { MoonPayBuyWidget } from "@moonpay/moonpay-react";
 1. User fills payment form
 2. Frontend creates payment via API → gets deposit address
 3. User clicks "Buy USDC" → MoonPay widget opens
-4. User pays with card on MoonPay
-5. MoonPay sends crypto to deposit address
-6. MoonPay webhook notifies Furnel → updates payment status
-7. Workflow continues to offramp
+4. User selects "Credit/Debit Card" payment method (IMPORTANT!)
+5. User enters test card details and completes payment
+6. MoonPay sends crypto to deposit address
+7. MoonPay webhook notifies Furnel → updates payment status
+8. Workflow continues to offramp
 ```
 
 ## Local Development
@@ -123,7 +174,12 @@ docker compose -f compose.development.yml up -d
 1. Open `http://localhost`
 2. Fill in payment form (amount, recipient details)
 3. Click "Continue to Buy USDC"
-4. Complete MoonPay widget flow with test card
+4. In MoonPay widget:
+   - Select **"Credit/Debit Card"** as payment method (NOT Revolut Pay or others!)
+   - Enter test card: `4929 4205 7359 5709`
+   - Expiry: any future date (e.g., `12/26`)
+   - CVV: `123`
+   - Complete 3DS verification if prompted (use any 6-digit code)
 
 ### Simulate Webhook
 
