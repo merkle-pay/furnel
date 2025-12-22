@@ -293,11 +293,12 @@ function PaymentPage() {
       </section>
 
       {/* MoonPay Widget - sends USDC directly to Furnel deposit address */}
+      {/* Note: Test mode uses 'eth' since 'usdc_sol' isn't supported in sandbox */}
       <MoonPayBuyWidget
         variant="overlay"
         baseCurrencyCode="usd"
         baseCurrencyAmount={formData.amount || "100"}
-        defaultCurrencyCode="usdc_sol"
+        defaultCurrencyCode={import.meta.env.PROD ? "usdc_sol" : "eth"}
         walletAddress={paymentResult?.depositAddress || ""}
         visible={showMoonPay}
         onClose={async () => setShowMoonPay(false)}

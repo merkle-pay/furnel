@@ -1,7 +1,96 @@
 import { Hono } from "hono";
+import { createHmac } from "crypto";
 import { pool } from "../lib/db.js";
 
 export const webhookRoutes = new Hono();
+
+// Verify MoonPay webhook signature
+function verifyMoonPaySignature(
+  payload: string,
+  signature: string | undefined,
+  webhookKey: string
+): boolean {
+  if (!signature || !webhookKey) return false;
+
+  const expectedSignature = createHmac("sha256", webhookKey)
+    .update(payload)
+    .digest("base64");
+
+  return signature === expectedSignature;
+}
+
+// MoonPay webhook - receives transaction notifications
+webhookRoutes.post("/moonpay", async (c) => {
+  const rawBody = await c.req.text();
+  const signature = c.req.header("Moonpay-Signature-V2");
+  const webhookKey = process.env.MOONPAY_WEBHOOK_KEY;
+
+  // Verify signature in production
+  if (webhookKey && !verifyMoonPaySignature(rawBody, signature, webhookKey)) {
+    console.error("MoonPay webhook signature verification failed");
+    return c.json({ error: "Invalid signature" }, 401);
+  }
+
+  const body = JSON.parse(rawBody);
+  console.log("MoonPay webhook received:", JSON.stringify(body, null, 2));
+
+  const { type, data } = body;
+
+  try {
+    // MoonPay sends the wallet address in data.walletAddress
+    // This matches our deposit_address
+    const walletAddress = data.walletAddress;
+    const status = data.status;
+    const txHash = data.cryptoTransactionId;
+
+    switch (type) {
+      case "transaction_created":
+        console.log(`MoonPay transaction created for ${walletAddress}`);
+        break;
+
+      case "transaction_updated":
+        if (status === "completed") {
+          // USDC received! Update payment status
+          await pool.query(
+            `UPDATE payments
+             SET status = 'USDC_RECEIVED',
+                 usdc_tx_hash = $2,
+                 usdc_received_at = NOW(),
+                 updated_at = NOW()
+             WHERE deposit_address = $1 AND status = 'WAITING_FOR_USDC'`,
+            [walletAddress, txHash]
+          );
+          console.log(`Payment updated: USDC received at ${walletAddress}`);
+        } else if (status === "failed") {
+          await pool.query(
+            `UPDATE payments
+             SET status = 'USDC_FAILED',
+                 error_message = $2,
+                 updated_at = NOW()
+             WHERE deposit_address = $1 AND status = 'WAITING_FOR_USDC'`,
+            [walletAddress, data.failureReason || "MoonPay transaction failed"]
+          );
+          console.log(`Payment failed: ${walletAddress}`);
+        }
+        break;
+
+      default:
+        console.log(`Unknown MoonPay event type: ${type}`);
+    }
+
+    // Log webhook event
+    await pool.query(
+      `INSERT INTO webhook_events (provider, event_type, payload, processed, created_at)
+       VALUES ('moonpay', $1, $2, true, NOW())`,
+      [type, rawBody]
+    );
+
+    return c.json({ received: true });
+  } catch (error) {
+    console.error("MoonPay webhook processing error:", error);
+    return c.json({ error: "Webhook processing failed" }, 500);
+  }
+});
 
 // Coinbase Offramp webhook
 // Called when offramp transaction status changes

@@ -94,6 +94,11 @@ services:
       - NODE_ENV=development
       - POSTGRES_PASSWORD=devpassword
       - MOCK_MODE=true
+      # Test deposit address (ETH for MoonPay sandbox, Solana for production)
+      - FURNEL_DEPOSIT_ADDRESS=${FURNEL_DEPOSIT_ADDRESS:-0x0000000000000000000000000000000000000000}
+      # MoonPay keys
+      - MOONPAY_SECRET_KEY=${MOONPAY_SECRET_KEY:-}
+      - MOONPAY_WEBHOOK_KEY=${MOONPAY_WEBHOOK_KEY:-}
 
   workers:
     build: ./workers
