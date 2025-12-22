@@ -156,6 +156,7 @@ make hash     # Generate password hash
 ## Documentation
 
 - [Product Requirements (PRD)](./docs/PRD.md)
+- [Payment Flow (Step-by-Step)](./docs/furnel-flow.md)
 - [MoonPay Integration](./docs/moonpay.md)
 - [Interview Challenge](./docs/interview.md)
 
