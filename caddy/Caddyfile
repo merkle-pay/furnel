@@ -26,4 +26,8 @@
         reverse_proxy pgweb:8081
     }
 
+    # Web frontend (default)
+    handle {
+        reverse_proxy web:3000
+    }
 }

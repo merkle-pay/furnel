@@ -121,6 +121,18 @@ services:
       - .env
     restart: unless-stopped
 
+  # Web Frontend
+  web:
+    build: ./web
+    container_name: furnel-web
+    networks:
+      - furnel-network
+    depends_on:
+      - api
+    env_file:
+      - .env
+    restart: unless-stopped
+
   # Caddy Reverse Proxy
   caddy:
     image: caddy:2-alpine
@@ -140,6 +152,7 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+      - web
       - temporal-ui
 
   # PgWeb for database access

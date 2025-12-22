@@ -12,6 +12,8 @@
     "check": "biome check"
   },
   "dependencies": {
+    "@moonpay/moonpay-js": "^0.7.6",
+    "@moonpay/moonpay-react": "^1.10.6",
     "@faker-js/faker": "^10.0.0",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/match-sorter-utils": "^8.19.4",

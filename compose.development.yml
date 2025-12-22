@@ -103,6 +103,23 @@ services:
       - CDP_API_KEY_ID=${CDP_API_KEY_ID:-}
       - CDP_API_KEY_PRIVATE_KEY=${CDP_API_KEY_PRIVATE_KEY:-}
 
+  web:
+    build:
+      context: ./web
+      target: dev
+    container_name: furnel-web
+    ports:
+      - "3001:3000"
+    networks:
+      - furnel-network
+    depends_on:
+      - api
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:3000
+    volumes:
+      - ./web/src:/app/src
+
   pgweb:
     image: sosedoff/pgweb:latest
     container_name: furnel-pgweb
