@@ -10,7 +10,7 @@ services:
     networks:
       - furnel-network
     volumes:
-      - ./furnel-db-data:/var/lib/postgresql/data
+      - ./furnel-db-data:/var/lib/postgresql
     restart: unless-stopped
     healthcheck:
       test:
@@ -62,7 +62,7 @@ services:
     networks:
       - furnel-network
     volumes:
-      - ./temporal-db-data:/var/lib/postgresql/data
+      - ./temporal-db-data:/var/lib/postgresql
     restart: unless-stopped
     healthcheck:
       test:
