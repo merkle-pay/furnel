@@ -1,8 +1,31 @@
 import { Hono } from "hono";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { pool } from "../lib/db.js";
 
 export const webhookRoutes = new Hono();
+
+// ============================================================
+// Webhook Signature Verification
+// ============================================================
+//
+// WHY DO WE NEED THIS?
+// --------------------
+// When Coinbase/MoonPay sends a webhook to our server, we need to verify
+// it's really from them and not an attacker trying to fake a "payment completed"
+// message to steal money.
+//
+// HOW IT WORKS:
+// 1. Provider (Coinbase) and us share a secret key
+// 2. Provider signs the webhook body: signature = HMAC-SHA256(secret, body)
+// 3. Provider sends: { body, signature }
+// 4. We compute: expected = HMAC-SHA256(secret, body)
+// 5. If signature === expected, it's authentic
+//
+// Without this, an attacker could send:
+//   POST /api/webhooks/coinbase
+//   { "event_type": "offramp.completed", "data": { "order_id": "victim123" } }
+// And we'd mark the payment as complete even though no money was sent!
+// ============================================================
 
 // Verify MoonPay webhook signature
 // Header format: Moonpay-Signature-V2: t=<timestamp>,s=<signature>
@@ -42,6 +65,41 @@ function verifyMoonPaySignature(
   console.log("  - Signed payload preview:", signedPayload.substring(0, 150));
 
   return signature === expectedSignature;
+}
+
+// Verify Coinbase CDP webhook signature
+// Header: x-coinbase-signature
+// Algorithm: HMAC-SHA256(webhookId, body)
+// Docs: https://docs.cdp.coinbase.com/webhooks/overview
+function verifyCoinbaseSignature(
+  payload: string,
+  signatureHeader: string | undefined,
+  webhookId: string
+): boolean {
+  if (!signatureHeader || !webhookId) return false;
+
+  // Generate expected signature using webhookId as the secret
+  const hmac = createHmac("sha256", webhookId);
+  hmac.update(payload);
+  const expectedSignature = hmac.digest("hex");
+
+  // Use timing-safe comparison to prevent timing attacks
+  // (Attacker can't guess the signature by measuring response time)
+  try {
+    const receivedBuffer = Buffer.from(signatureHeader, "hex");
+    const expectedBuffer = Buffer.from(expectedSignature, "hex");
+
+    // Buffers must be same length for timingSafeEqual
+    if (receivedBuffer.length !== expectedBuffer.length) {
+      console.log("Coinbase signature length mismatch");
+      return false;
+    }
+
+    return timingSafeEqual(receivedBuffer, expectedBuffer);
+  } catch (error) {
+    console.error("Coinbase signature verification error:", error);
+    return false;
+  }
 }
 
 // MoonPay webhook - receives transaction notifications
@@ -139,12 +197,31 @@ webhookRoutes.post("/moonpay", async (c) => {
 // Coinbase Offramp webhook
 // Called when offramp transaction status changes
 webhookRoutes.post("/coinbase", async (c) => {
-  const body = await c.req.json();
+  const rawBody = await c.req.text();
+  const signatureHeader = c.req.header("x-coinbase-signature");
+  const webhookId = process.env.COINBASE_WEBHOOK_ID;
 
-  console.log("Coinbase webhook received:", JSON.stringify(body, null, 2));
+  // Debug logging
+  console.log("Coinbase webhook received:");
+  console.log("  - Signature header:", signatureHeader ? "present" : "missing");
+  console.log("  - Webhook ID configured:", webhookId ? "yes" : "no");
 
-  // Verify webhook signature (TODO: implement signature verification)
-  // const signature = c.req.header("x-coinbase-signature");
+  // Verify webhook signature
+  if (webhookId && signatureHeader) {
+    const isValid = verifyCoinbaseSignature(rawBody, signatureHeader, webhookId);
+    if (!isValid) {
+      console.error("Coinbase webhook signature verification FAILED");
+      return c.json({ error: "Invalid signature" }, 401);
+    }
+    console.log("Coinbase webhook signature verification PASSED");
+  } else if (!webhookId) {
+    // In development, allow unsigned webhooks but log a warning
+    console.warn("Coinbase webhook: No COINBASE_WEBHOOK_ID configured, skipping verification");
+    console.warn("  ⚠️  This is a security risk in production!");
+  }
+
+  const body = JSON.parse(rawBody);
+  console.log("Coinbase webhook payload:", JSON.stringify(body, null, 2));
 
   const { event_type, data } = body;
 
