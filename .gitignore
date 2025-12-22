@@ -10,8 +10,8 @@ dist/
 .env.*.local
 
 # Data directories (docker volumes)
-postgres-data/
-temporal-data/
+furnel-db-data/
+temporal-db-data/
 caddy_data/
 caddy_config/
 
