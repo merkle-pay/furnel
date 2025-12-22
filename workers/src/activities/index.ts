@@ -2,8 +2,9 @@
 // USDC → Local Currency Offramp
 
 import { Connection, PublicKey } from "@solana/web3.js";
-import { SignJWT, importPKCS8 } from "jose";
+import { SignJWT, importPKCS8, importJWK } from "jose";
 import { Pool } from "pg";
+import * as crypto from "crypto";
 
 // Database connection
 const pool = new Pool({
@@ -19,9 +20,7 @@ const SOLANA_RPC = process.env.SOLANA_RPC || "https://api.devnet.solana.com";
 const solanaConnection = new Connection(SOLANA_RPC);
 
 // USDC token mint address (Solana mainnet)
-const USDC_MINT = new PublicKey(
-  process.env.USDC_MINT || "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-);
+const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
 // Coinbase CDP API
 const CDP_API_URL = "https://api.developer.coinbase.com";
@@ -37,22 +36,34 @@ interface CoinbaseQuoteResponse {
 
 // Generate JWT for Coinbase CDP API
 async function generateCDPToken(): Promise<string> {
+  const keyId = process.env.CDP_API_KEY_ID;
   const keyName = process.env.CDP_API_KEY_NAME;
-  const privateKey = process.env.CDP_API_KEY_PRIVATE_KEY;
+  const privateKeyBase64 = process.env.CDP_API_KEY_PRIVATE_KEY;
 
-  if (!keyName || !privateKey) {
-    throw new Error("CDP_API_KEY_NAME and CDP_API_KEY_PRIVATE_KEY required");
+  if (!keyId || !privateKeyBase64) {
+    throw new Error("CDP_API_KEY_ID and CDP_API_KEY_PRIVATE_KEY required");
   }
 
-  // Import the private key
-  const key = await importPKCS8(privateKey.replace(/\\n/g, "\n"), "ES256");
+  // Decode the base64 private key (Ed25519 format: 64 bytes = 32 private + 32 public)
+  const privateKeyBytes = Buffer.from(privateKeyBase64, "base64");
+
+  // Create Ed25519 key from the first 32 bytes (private seed)
+  const key = await importJWK(
+    {
+      kty: "OKP",
+      crv: "Ed25519",
+      d: privateKeyBytes.subarray(0, 32).toString("base64url"),
+      x: privateKeyBytes.subarray(32, 64).toString("base64url"),
+    },
+    "EdDSA"
+  );
 
   // Generate JWT
   const token = await new SignJWT({})
-    .setProtectedHeader({ alg: "ES256", kid: keyName, typ: "JWT" })
+    .setProtectedHeader({ alg: "EdDSA", kid: keyId, typ: "JWT" })
     .setIssuedAt()
     .setExpirationTime("2m")
-    .setSubject(keyName)
+    .setSubject(keyId)
     .setAudience("cdp_service")
     .sign(key);
 
@@ -73,10 +84,10 @@ export async function waitForUSDC(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       // Get token accounts for this address
-      const tokenAccounts = await solanaConnection.getParsedTokenAccountsByOwner(
-        depositPubkey,
-        { mint: USDC_MINT }
-      );
+      const tokenAccounts =
+        await solanaConnection.getParsedTokenAccountsByOwner(depositPubkey, {
+          mint: USDC_MINT,
+        });
 
       if (tokenAccounts.value.length > 0) {
         const balance =
