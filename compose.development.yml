@@ -97,9 +97,8 @@ services:
     environment:
       - NODE_ENV=development
       - POSTGRES_PASSWORD=devpassword
-      - MOCK_MODE=true
-      # Test deposit address (ETH for MoonPay sandbox, Solana for production)
-      - FURNEL_DEPOSIT_ADDRESS=${FURNEL_DEPOSIT_ADDRESS:-0x0000000000000000000000000000000000000000}
+      # Deposit address (Solana for Coinbase offramp)
+      - FURNEL_DEPOSIT_ADDRESS=${FURNEL_DEPOSIT_ADDRESS:-}
       # MoonPay keys
       - MOONPAY_SECRET_KEY=${MOONPAY_SECRET_KEY:-}
       - MOONPAY_WEBHOOK_SIGNING_KEY=${MOONPAY_WEBHOOK_SIGNING_KEY:-}
@@ -117,9 +116,13 @@ services:
     environment:
       - NODE_ENV=development
       - POSTGRES_PASSWORD=devpassword
-      - MOCK_MODE=true
-      - SOLANA_RPC=https://api.devnet.solana.com
-      # CDP credentials (optional in mock mode)
+      - SOLANA_RPC=${SOLANA_RPC:-https://api.devnet.solana.com}
+      # MoonPay test deposit address (Sepolia) - when set, detects ETH instead of USDC
+      - MOONPAY_DEPOSIT_ADDRESS=${MOONPAY_DEPOSIT_ADDRESS:-}
+      # Furnel deposit address (Solana) - used for Coinbase offramp
+      - FURNEL_DEPOSIT_ADDRESS=${FURNEL_DEPOSIT_ADDRESS:-}
+      # CDP credentials
+      - CDP_PROJECT_ID=${CDP_PROJECT_ID:-}
       - CDP_API_KEY_ID=${CDP_API_KEY_ID:-}
       - CDP_API_KEY_PRIVATE_KEY=${CDP_API_KEY_PRIVATE_KEY:-}
 

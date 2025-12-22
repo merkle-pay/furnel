@@ -127,7 +127,7 @@ paymentRoutes.get("/:paymentId", async (c) => {
     // Get from database
     const result = await pool.query(
       `SELECT
-        id, user_wallet_address, deposit_address, amount, currency, status,
+        id, deposit_address, amount, currency, status,
         recipient_name, recipient_email, fx_rate, quote_id, offramp_url, offramp_order_id,
         error_message, workflow_id, created_at, updated_at
        FROM payments WHERE id = $1`,

@@ -8,6 +8,7 @@
     "start": "node dist/worker.js"
   },
   "dependencies": {
+    "@coinbase/cdp-sdk": "^1.40.1",
     "@coinbase/coinbase-sdk": "^0.15.0",
     "@solana/web3.js": "^1.98.0",
     "@temporalio/activity": "^1.11.2",

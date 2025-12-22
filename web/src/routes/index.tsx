@@ -14,7 +14,8 @@ function PaymentPage() {
     recipientEmail: "",
     accountNumber: "",
     sortCode: "",
-    currency: "GBP",
+    iban: "",
+    currency: "USD",
   });
   const [paymentResult, setPaymentResult] = useState<{
     paymentId: string;
@@ -63,6 +64,7 @@ function PaymentPage() {
           recipientEmail: formData.recipientEmail,
           recipientAccountNumber: formData.accountNumber,
           recipientSortCode: formData.sortCode,
+          recipientIban: formData.iban,
         }),
       });
 
@@ -182,41 +184,59 @@ function PaymentPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {formData.currency === "EUR" ? (
                 <div>
                   <label className="block text-gray-300 text-sm font-medium mb-2">
-                    Account Number
+                    IBAN
                   </label>
                   <input
                     type="text"
-                    value={formData.accountNumber}
+                    value={formData.iban}
                     onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        accountNumber: e.target.value,
-                      })
+                      setFormData({ ...formData, iban: e.target.value })
                     }
-                    placeholder="12345678"
+                    placeholder="GB82 WEST 1234 5698 7654 32"
                     className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-gray-300 text-sm font-medium mb-2">
-                    Sort Code
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.sortCode}
-                    onChange={(e) =>
-                      setFormData({ ...formData, sortCode: e.target.value })
-                    }
-                    placeholder="12-34-56"
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
-                    required
-                  />
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-gray-300 text-sm font-medium mb-2">
+                      {formData.currency === "USD" ? "Routing Number" : "Sort Code"}
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.sortCode}
+                      onChange={(e) =>
+                        setFormData({ ...formData, sortCode: e.target.value })
+                      }
+                      placeholder={formData.currency === "USD" ? "123456789" : "12-34-56"}
+                      className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-300 text-sm font-medium mb-2">
+                      Account Number
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.accountNumber}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          accountNumber: e.target.value,
+                        })
+                      }
+                      placeholder={formData.currency === "USD" ? "1234567890" : "12345678"}
+                      className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div>
                 <label className="block text-gray-300 text-sm font-medium mb-2">

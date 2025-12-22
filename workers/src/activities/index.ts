@@ -2,9 +2,8 @@
 // USDC → Local Currency Offramp
 
 import { Connection, PublicKey } from "@solana/web3.js";
-import { SignJWT, importJWK } from "jose";
+import { generateJwt } from "@coinbase/cdp-sdk/auth";
 import { Pool } from "pg";
-import * as crypto from "crypto";
 
 // Database connection
 const pool = new Pool({
@@ -25,8 +24,8 @@ const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 // Coinbase CDP API
 const CDP_API_URL = "https://api.developer.coinbase.com";
 
-// Mock mode for local testing (no real API calls)
-const MOCK_MODE = process.env.MOCK_MODE === "true";
+// MoonPay test deposit address (Sepolia)
+const MOONPAY_DEPOSIT_ADDRESS = process.env.MOONPAY_DEPOSIT_ADDRESS;
 
 interface CoinbaseQuoteResponse {
   offramp_url: string;
@@ -37,56 +36,110 @@ interface CoinbaseQuoteResponse {
   expires_at: string;
 }
 
-// Generate JWT for Coinbase CDP API
-async function generateCDPToken(): Promise<string> {
+// Generate JWT for Coinbase CDP API using official SDK
+async function generateCDPToken(requestPath: string, requestMethod: string = "POST"): Promise<string> {
+  const projectId = process.env.CDP_PROJECT_ID;
   const keyId = process.env.CDP_API_KEY_ID;
-  const privateKeyBase64 = process.env.CDP_API_KEY_PRIVATE_KEY;
+  const privateKey = process.env.CDP_API_KEY_PRIVATE_KEY;
 
-  if (!keyId || !privateKeyBase64) {
-    throw new Error("CDP_API_KEY_ID and CDP_API_KEY_PRIVATE_KEY required");
+  if (!projectId || !keyId || !privateKey) {
+    throw new Error("CDP_PROJECT_ID, CDP_API_KEY_ID, and CDP_API_KEY_PRIVATE_KEY required");
   }
 
-  // Decode the base64 private key (Ed25519 format: 64 bytes = 32 private + 32 public)
-  const privateKeyBytes = Buffer.from(privateKeyBase64, "base64");
+  // API key ID should be in full path format per CDP docs
+  const apiKeyId = `organizations/${projectId}/apiKeys/${keyId}`;
 
-  // Create Ed25519 key from the first 32 bytes (private seed)
-  const key = await importJWK(
-    {
-      kty: "OKP",
-      crv: "Ed25519",
-      d: privateKeyBytes.subarray(0, 32).toString("base64url"),
-      x: privateKeyBytes.subarray(32, 64).toString("base64url"),
-    },
-    "EdDSA"
-  );
+  console.log(`Generating JWT for ${requestMethod} ${requestPath} with key ${apiKeyId}`);
 
-  // Generate JWT
-  const token = await new SignJWT({})
-    .setProtectedHeader({ alg: "EdDSA", kid: keyId, typ: "JWT" })
-    .setIssuedAt()
-    .setExpirationTime("2m")
-    .setSubject(keyId)
-    .setAudience("cdp_service")
-    .sign(key);
+  // Use the official CDP SDK to generate JWT
+  // Supports both Ed25519 (base64) and EC (PEM) key formats automatically
+  const token = await generateJwt({
+    apiKeyId,
+    apiKeySecret: privateKey,
+    requestMethod,
+    requestHost: "api.developer.coinbase.com",
+    requestPath,
+    expiresIn: 120,
+  });
 
   return token;
 }
 
-// Activity: Wait for USDC deposit on Solana
+// Helper: Get recent transactions on Sepolia (any direction)
+async function getSepoliaTxs(address: string): Promise<Array<{ hash: string; value: string; timeStamp: string; from: string; to: string }>> {
+  // Use Blockscout API (Etherscan V1 is deprecated)
+  const response = await fetch(
+    `https://eth-sepolia.blockscout.com/api?module=account&action=txlist&address=${address}&sort=desc&page=1&offset=20`
+  );
+  const data = await response.json() as {
+    result: Array<{ hash: string; value: string; timeStamp: string; from: string; to: string }>
+  };
+  return data.result || [];
+}
+
+// Activity: Wait for deposit (ETH on Sepolia for test, USDC on Solana for prod)
 export async function waitForUSDC(
   depositAddress: string,
   expectedAmount: number
 ): Promise<{ txHash: string; amount: number }> {
-  console.log(`Waiting for ${expectedAmount} USDC at ${depositAddress}`);
+  // Test mode: detect ETH on Sepolia (MoonPay sandbox sends ETH)
+  if (MOONPAY_DEPOSIT_ADDRESS) {
+    console.log(`[TEST MODE] Waiting for new transaction on Sepolia at ${MOONPAY_DEPOSIT_ADDRESS}`);
+    console.log(`  (MoonPay will trigger a transaction, then we use Solana USDC for Coinbase)`);
 
-  // Mock mode: simulate immediate deposit
-  if (MOCK_MODE) {
-    console.log("[MOCK] Simulating USDC deposit...");
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const txHash = `mock_tx_${Date.now()}`;
-    console.log(`[MOCK] USDC received: ${expectedAmount} (tx: ${txHash})`);
-    return { txHash, amount: expectedAmount };
+    // Get initial transactions to know what's already there
+    const initialTxs = await getSepoliaTxs(MOONPAY_DEPOSIT_ADDRESS);
+    const initialTxHashes = new Set(initialTxs.map(tx => tx.hash));
+    console.log(`  Found ${initialTxs.length} existing transactions`);
+    if (initialTxs.length > 0) {
+      console.log(`  Latest tx: ${initialTxs[0].hash}`);
+    }
+
+    const maxAttempts = 120; // 10 minutes with 5s intervals
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const currentTxs = await getSepoliaTxs(MOONPAY_DEPOSIT_ADDRESS);
+
+        if (attempt % 6 === 0) { // Log every 30 seconds
+          console.log(`  [${attempt * 5}s] Checking for new transactions... (${currentTxs.length} total)`);
+        }
+
+        // Find new transactions that weren't in the initial set
+        const newTxs = currentTxs.filter(tx => !initialTxHashes.has(tx.hash));
+
+        if (newTxs.length > 0) {
+          const latestTx = newTxs[0];
+          const isIncoming = latestTx.to?.toLowerCase() === MOONPAY_DEPOSIT_ADDRESS.toLowerCase();
+          const amountEth = Number(BigInt(latestTx.value || "0")) / 1e18;
+
+          console.log("");
+          console.log("=".repeat(50));
+          console.log("NEW TRANSACTION DETECTED ON SEPOLIA!");
+          console.log("=".repeat(50));
+          console.log(`  Direction: ${isIncoming ? "INCOMING" : "OUTGOING"}`);
+          console.log(`  Amount: ${amountEth.toFixed(6)} ETH`);
+          console.log(`  From: ${latestTx.from}`);
+          console.log(`  To: ${latestTx.to}`);
+          console.log(`  Tx: ${latestTx.hash}`);
+          console.log(`  (Proceeding to Coinbase offramp with Solana USDC)`);
+          console.log("=".repeat(50));
+          console.log("");
+
+          // Return the expected USDC amount for Coinbase (ignore actual ETH amount)
+          return { txHash: latestTx.hash, amount: expectedAmount };
+        }
+      } catch (error) {
+        console.error(`  Error checking Sepolia transactions (attempt ${attempt}):`, error);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+
+    throw new Error(`Sepolia transaction timeout after ${maxAttempts * 5} seconds`);
   }
+
+  // Production mode: detect USDC on Solana
+  console.log(`Waiting for ${expectedAmount} USDC at ${depositAddress}`);
 
   const depositPubkey = new PublicKey(depositAddress);
 
@@ -162,34 +215,27 @@ export async function generateOfframpURL(
 ): Promise<{ offrampUrl: string; quoteId: string; expiresAt: Date }> {
   console.log(`Generating offramp URL for ${amount} USDC → ${currency}`);
 
-  // Mock mode: return fake URL
-  if (MOCK_MODE) {
-    const quoteId = `mock_quote_${Date.now()}`;
-    console.log(`[MOCK] Offramp URL generated: ${quoteId}`);
-    return {
-      offrampUrl: `https://pay.coinbase.com/sell?mock=true&quote=${quoteId}`,
-      quoteId,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-    };
-  }
+  const apiPath = "/onramp/v1/sell/quote";
+  const token = await generateCDPToken(apiPath, "POST");
 
-  const token = await generateCDPToken();
-
-  const response = await fetch(`${CDP_API_URL}/onramp/v1/sell/quote`, {
+  const response = await fetch(`${CDP_API_URL}${apiPath}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      "Accept": "application/json",
     },
     body: JSON.stringify({
-      sell_currency: "USDC",
-      sell_amount: amount.toString(),
-      cashout_currency: currency,
-      payment_method: "BANK_ACCOUNT",
-      country: "US", // TODO: Make configurable
-      source_address: sourceAddress,
-      redirect_url: redirectUrl,
-      partner_user_id: partnerUserId,
+      sellCurrency: "USDC",
+      sellAmount: amount.toString(),
+      sellNetwork: "solana",
+      cashoutCurrency: currency,
+      paymentMethod: "ACH_BANK_ACCOUNT",
+      country: "US",
+      subdivision: "CA", // TODO: Make configurable
+      sourceAddress,
+      redirectUrl,
+      partnerUserId,
     }),
   });
 
@@ -236,14 +282,6 @@ export async function executeOfframp(
 // Activity: Confirm delivery (check webhook or poll)
 export async function confirmDelivery(orderId: string): Promise<boolean> {
   console.log(`Confirming delivery for order ${orderId}`);
-
-  // Mock mode: auto-confirm after short delay
-  if (MOCK_MODE) {
-    console.log("[MOCK] Simulating delivery confirmation...");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    console.log("[MOCK] Delivery confirmed");
-    return true;
-  }
 
   // Check database for webhook confirmation
   const result = await pool.query(
