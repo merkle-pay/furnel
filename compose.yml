@@ -36,8 +36,6 @@ services:
       temporal-db:
         condition: service_healthy
     restart: unless-stopped
-    volumes:
-      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
 
   # PostgreSQL for Temporal (separate from app DB)
   temporal-db:
