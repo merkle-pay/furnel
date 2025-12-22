@@ -21,6 +21,17 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build: ./migrate
+    container_name: furnel-migrate
+    environment:
+      DATABASE_URL: postgres://furnel:devpassword@furnel-db:5432/furnel?sslmode=disable
+    networks:
+      - furnel-network
+    depends_on:
+      furnel-db:
+        condition: service_healthy
+
   temporal-db:
     image: postgres:18.1-trixie
     container_name: temporal-db
@@ -75,8 +86,8 @@ services:
     networks:
       - furnel-network
     depends_on:
-      furnel-db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       temporal:
         condition: service_started
     environment:
@@ -90,8 +101,10 @@ services:
     networks:
       - furnel-network
     depends_on:
-      - temporal
-      - furnel-db
+      migrate:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_started
     environment:
       - NODE_ENV=development
       - POSTGRES_PASSWORD=devpassword

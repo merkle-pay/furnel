@@ -1,9 +1,9 @@
 {
-  "name": "node-pulse-migrations",
+  "name": "furnel-migrations",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Database migrations for Node Pulse Admiral",
+  "description": "Database migrations for Furnel project",
   "scripts": {
     "migrate:create": "node-pg-migrate create --config-file migrations.json",
     "migrate:up": "node-pg-migrate up --config-file migrations.json",
