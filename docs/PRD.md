@@ -45,6 +45,43 @@ User acquires USDC on their own (via MoonPay, Coinbase, exchange, etc.). Furnel 
 | **Coinbase Offramp** | 0% for USDC | US, EU, UK |
 | **Transak** | 1% | Global, 40+ cryptos |
 
+### Coinbase Offramp Integration
+
+**Important:** Coinbase Offramp is a **redirect flow**, not a pure API.
+
+```
+Flow:
+1. Generate sell quote → Get redirect URL
+2. User clicks URL → Redirected to Coinbase UI
+3. User completes KYC/auth on Coinbase
+4. User confirms sell order
+5. Coinbase sends local currency to user's bank
+6. We receive webhook notification
+```
+
+**Environment Variables:**
+
+```bash
+CDP_PROJECT_ID=        # Coinbase Developer Platform project ID
+CDP_API_KEY_ID=        # API key ID
+CDP_API_KEY_NAME=      # API key name (e.g., "organizations/.../apiKeys/...")
+CDP_API_KEY_PRIVATE_KEY=  # Private key (PEM format)
+```
+
+**Temporal Workflow Integration:**
+
+```
+PaymentWorkflow
+├── waitForUSDC()       → Detect USDC deposit on Solana
+├── generateOfframpURL()→ Get Coinbase redirect URL
+├── [USER INTERACTION]  → User clicks URL, completes on Coinbase
+├── waitForWebhook()    → Wait for Coinbase webhook
+├── confirmDelivery()   → Verify funds sent
+└── Compensation        → Refund USDC if user cancels
+```
+
+**Limitation:** Since user must interact with Coinbase UI, we cannot do fully automated offramp. The workflow pauses and waits for user action.
+
 ### Alternative Providers
 
 | Provider | Best For |
