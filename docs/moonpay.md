@@ -50,6 +50,8 @@ MoonPay uses **Revolut** as payment processor. Use Revolut test cards:
 
 **SSN (if asked):** Any 9 digits (e.g., `123456789`)
 
+> **⚠️ WARNING:** Never use real personal information in sandbox. Use fake data only.
+
 Source: [Revolut Test Cards](https://developer.revolut.com/docs/guides/accept-payments/get-started/test-implementation/test-cards)
 
 ## Webhook
@@ -105,6 +107,77 @@ import { MoonPayBuyWidget } from "@moonpay/moonpay-react";
 6. MoonPay webhook notifies Furnel → updates payment status
 7. Workflow continues to offramp
 ```
+
+## Local Development
+
+MoonPay can't send webhooks to localhost. Simulate them manually to test the full flow.
+
+### Start Services
+
+```bash
+docker compose -f compose.development.yml up -d
+```
+
+### Create a Payment
+
+1. Open `http://localhost`
+2. Fill in payment form (amount, recipient details)
+3. Click "Continue to Buy USDC"
+4. Complete MoonPay widget flow with test card
+
+### Simulate Webhook
+
+MoonPay can't reach localhost, so simulate the webhook:
+
+```bash
+curl -X POST http://localhost/api/webhooks/moonpay \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "transaction_updated",
+    "data": {
+      "status": "completed",
+      "walletAddress": "0xc216eD2D6c295579718dbd4a797845CdA70B3C36",
+      "cryptoTransactionId": "0xtest123abc"
+    }
+  }'
+```
+
+### Verify Flow
+
+Check payment status:
+
+```bash
+docker compose -f compose.development.yml exec furnel-db psql -U furnel -d furnel \
+  -c "SELECT id, status FROM payments ORDER BY created_at DESC LIMIT 5;"
+```
+
+Check worker logs:
+
+```bash
+docker compose -f compose.development.yml logs workers --tail 30
+```
+
+### Expected Flow (Mock Mode)
+
+```
+INITIATED
+  ↓
+WAITING_FOR_USDC  ← (webhook triggers this)
+  ↓
+USDC_RECEIVED
+  ↓
+FX_LOCKED
+  ↓
+GENERATING_OFFRAMP_URL
+  ↓
+AWAITING_USER_ACTION
+  ↓
+WAITING_FOR_OFFRAMP
+  ↓
+COMPLETED
+```
+
+In mock mode (`MOCK_MODE=true`), the workflow auto-completes. In production, user must complete Coinbase offramp.
 
 ## Resources
 

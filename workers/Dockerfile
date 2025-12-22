@@ -1,15 +1,17 @@
-FROM node:22-alpine
+# Use slim (Debian-based) not Alpine - Temporal SDK requires glibc
+FROM node:22-slim
 
 WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci
 
+# Copy everything (Temporal needs src/workflows for bundling)
 COPY . .
 RUN npm run build
 
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S workeruser -u 1001 -G nodejs && \
+RUN groupadd -g 1001 nodejs && \
+    useradd -u 1001 -g nodejs workeruser && \
     chown -R workeruser:nodejs /app
 
 USER workeruser
