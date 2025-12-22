@@ -99,8 +99,9 @@ function PaymentPage() {
                   setFormData({ ...formData, amount: e.target.value })
                 }
                 placeholder="100.00"
-                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white text-2xl font-semibold focus:border-cyan-500 focus:outline-none"
+                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white text-2xl font-semibold focus:border-cyan-500 focus:outline-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
                 required
+                min={0}
               />
               <p className="text-gray-500 text-sm mt-2">
                 You'll buy this amount in USDC, then offramp to{" "}
@@ -299,7 +300,7 @@ function PaymentPage() {
         defaultCurrencyCode="usdc_sol"
         walletAddress={paymentResult?.depositAddress || ""}
         visible={showMoonPay}
-        onClose={() => setShowMoonPay(false)}
+        onClose={async () => setShowMoonPay(false)}
       />
     </div>
   );
