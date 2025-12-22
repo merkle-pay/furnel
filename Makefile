@@ -1,4 +1,4 @@
-.PHONY: up down clean health hash dev dev-down dev-logs
+.PHONY: up down clean health hash dev-up dev-down dev-logs
 
 # Production
 up:
@@ -8,7 +8,7 @@ down:
 	docker compose down
 
 # Development (with mock mode)
-dev:
+dev-up:
 	docker compose -f compose.development.yml up -d --build
 
 dev-down:
