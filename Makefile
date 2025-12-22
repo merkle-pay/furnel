@@ -8,7 +8,7 @@ down:
 
 clean:
 	docker compose down -v
-	rm -rf postgres-data temporal-data caddy_data caddy_config
+	rm -rf furnel-db-data temporal-db-data
 
 health:
 	@docker compose ps

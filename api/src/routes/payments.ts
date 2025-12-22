@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { Client } from "@temporalio/client";
+import { Client, Connection } from "@temporalio/client";
 
 export const paymentRoutes = new Hono();
 
@@ -8,11 +8,10 @@ let temporalClient: Client | null = null;
 
 async function getTemporalClient(): Promise<Client> {
   if (!temporalClient) {
-    temporalClient = new Client({
-      connection: {
-        address: process.env.TEMPORAL_ADDRESS || "temporal:7233",
-      },
+    const connection = await Connection.connect({
+      address: "temporal:7233",
     });
+    temporalClient = new Client({ connection });
   }
   return temporalClient;
 }

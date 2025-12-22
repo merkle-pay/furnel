@@ -2,8 +2,7 @@
     debug
 }
 
-# Local development
-:80 {
+{$DOMAIN} {
     # API routes
     handle /api/* {
         reverse_proxy api:3000
@@ -12,28 +11,19 @@
     # Temporal UI (basic auth protected)
     handle /temporal/* {
         basic_auth {
-            admin {$CADDY_ADMIN_HASH}
+            {$CADDY_ADMIN_USER} {$CADDY_ADMIN_HASH}
         }
         uri strip_prefix /temporal
         reverse_proxy temporal-ui:8080
     }
 
     # PgWeb (basic auth protected)
-    handle /db/* {
+    handle /pgweb/* {
         basic_auth {
-            admin {$CADDY_ADMIN_HASH}
+            {$CADDY_ADMIN_USER} {$CADDY_ADMIN_HASH}
         }
-        uri strip_prefix /db
+        uri strip_prefix /pgweb
         reverse_proxy pgweb:8081
     }
 
-    # Health check
-    handle /health {
-        reverse_proxy api:3000
-    }
-
-    # Default
-    handle {
-        respond "Furnel API" 200
-    }
 }

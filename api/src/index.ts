@@ -12,7 +12,7 @@ app.use("*", logger());
 app.use("*", cors());
 
 // Routes
-app.route("/", healthRoutes);
+app.route("/api", healthRoutes);
 app.route("/api/payments", paymentRoutes);
 
 // 404 handler

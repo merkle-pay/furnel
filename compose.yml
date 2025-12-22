@@ -1,19 +1,21 @@
 services:
   # PostgreSQL for app data (payments, transactions, etc.)
-  postgres:
+  furnel-db:
     image: postgres:18.1-trixie
-    container_name: furnel-postgres
+    container_name: furnel-db
     environment:
-      POSTGRES_USER: payment
+      POSTGRES_USER: furnel
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: payment_db
+      POSTGRES_DB: furnel
     networks:
       - furnel-network
     volumes:
-      - ./postgres-data:/var/lib/postgresql/data
+      - ./furnel-db-data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U payment -d payment_db"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U furnel -d furnel
       interval: 5s
       timeout: 5s
       retries: 5
@@ -48,10 +50,12 @@ services:
     networks:
       - furnel-network
     volumes:
-      - ./temporal-data:/var/lib/postgresql/data
+      - ./temporal-db-data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U temporal -d temporal
       interval: 5s
       timeout: 5s
       retries: 5
@@ -68,20 +72,6 @@ services:
       - temporal
     restart: unless-stopped
 
-  # Temporal Admin Tools
-  temporal-admin-tools:
-    image: temporalio/admin-tools:1.28.0-tctl-1.18.2-cli-1.3.0
-    container_name: temporal-admin-tools
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CLI_ADDRESS=temporal:7233
-    networks:
-      - furnel-network
-    depends_on:
-      - temporal
-    stdin_open: true
-    tty: true
-
   # Hono API Server
   api:
     build: ./api
@@ -91,13 +81,17 @@ services:
     networks:
       - furnel-network
     depends_on:
-      - postgres
+      - furnel-db
       - temporal
     env_file:
       - .env
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:3000/api/health
       interval: 30s
       timeout: 10s
       retries: 3
@@ -110,7 +104,7 @@ services:
       - furnel-network
     depends_on:
       - temporal
-      - postgres
+      - furnel-db
     env_file:
       - .env
     restart: unless-stopped
@@ -141,11 +135,11 @@ services:
     image: sosedoff/pgweb:latest
     container_name: furnel-pgweb
     environment:
-      - DATABASE_URL=postgres://payment:${POSTGRES_PASSWORD}@postgres:5432/payment_db?sslmode=disable
+      - DATABASE_URL=postgres://furnel:${POSTGRES_PASSWORD}@furnel-db:5432/furnel?sslmode=disable
     networks:
       - furnel-network
     depends_on:
-      - postgres
+      - furnel-db
     restart: unless-stopped
 
 networks:
