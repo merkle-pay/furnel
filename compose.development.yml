@@ -1,0 +1,121 @@
+# Development compose - local testing with mocks
+# Usage: docker compose -f compose.development.yml up -d
+
+services:
+  furnel-db:
+    image: postgres:18.1-trixie
+    container_name: furnel-db
+    environment:
+      POSTGRES_USER: furnel
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: furnel
+    ports:
+      - "5432:5432"
+    networks:
+      - furnel-network
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U furnel -d furnel
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  temporal-db:
+    image: postgres:18.1-trixie
+    container_name: temporal-db
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: temporal
+    networks:
+      - furnel-network
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U temporal -d temporal
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  temporal:
+    image: temporalio/auto-setup:1.28.0
+    container_name: temporal
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=devpassword
+      - POSTGRES_SEEDS=temporal-db
+    ports:
+      - "7233:7233"
+    networks:
+      - furnel-network
+    depends_on:
+      temporal-db:
+        condition: service_healthy
+
+  temporal-ui:
+    image: temporalio/ui:2.39.0
+    container_name: temporal-ui
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    ports:
+      - "8080:8080"
+    networks:
+      - furnel-network
+    depends_on:
+      - temporal
+
+  api:
+    build: ./api
+    container_name: furnel-api
+    ports:
+      - "3000:3000"
+    networks:
+      - furnel-network
+    depends_on:
+      furnel-db:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    environment:
+      - NODE_ENV=development
+      - POSTGRES_PASSWORD=devpassword
+      - MOCK_MODE=true
+
+  workers:
+    build: ./workers
+    container_name: furnel-workers
+    networks:
+      - furnel-network
+    depends_on:
+      - temporal
+      - furnel-db
+    environment:
+      - NODE_ENV=development
+      - POSTGRES_PASSWORD=devpassword
+      - MOCK_MODE=true
+      - SOLANA_RPC=https://api.devnet.solana.com
+      # CDP credentials (optional in mock mode)
+      - CDP_API_KEY_ID=${CDP_API_KEY_ID:-}
+      - CDP_API_KEY_PRIVATE_KEY=${CDP_API_KEY_PRIVATE_KEY:-}
+
+  pgweb:
+    image: sosedoff/pgweb:latest
+    container_name: furnel-pgweb
+    environment:
+      - DATABASE_URL=postgres://furnel:devpassword@furnel-db:5432/furnel?sslmode=disable
+    ports:
+      - "8081:8081"
+    networks:
+      - furnel-network
+    depends_on:
+      furnel-db:
+        condition: service_healthy
+
+networks:
+  furnel-network:
+    driver: bridge

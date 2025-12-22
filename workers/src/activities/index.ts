@@ -2,7 +2,7 @@
 // USDC → Local Currency Offramp
 
 import { Connection, PublicKey } from "@solana/web3.js";
-import { SignJWT, importPKCS8, importJWK } from "jose";
+import { SignJWT, importJWK } from "jose";
 import { Pool } from "pg";
 import * as crypto from "crypto";
 
@@ -25,6 +25,9 @@ const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 // Coinbase CDP API
 const CDP_API_URL = "https://api.developer.coinbase.com";
 
+// Mock mode for local testing (no real API calls)
+const MOCK_MODE = process.env.MOCK_MODE === "true";
+
 interface CoinbaseQuoteResponse {
   offramp_url: string;
   quote_id: string;
@@ -37,7 +40,6 @@ interface CoinbaseQuoteResponse {
 // Generate JWT for Coinbase CDP API
 async function generateCDPToken(): Promise<string> {
   const keyId = process.env.CDP_API_KEY_ID;
-  const keyName = process.env.CDP_API_KEY_NAME;
   const privateKeyBase64 = process.env.CDP_API_KEY_PRIVATE_KEY;
 
   if (!keyId || !privateKeyBase64) {
@@ -76,6 +78,15 @@ export async function waitForUSDC(
   expectedAmount: number
 ): Promise<{ txHash: string; amount: number }> {
   console.log(`Waiting for ${expectedAmount} USDC at ${depositAddress}`);
+
+  // Mock mode: simulate immediate deposit
+  if (MOCK_MODE) {
+    console.log("[MOCK] Simulating USDC deposit...");
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const txHash = `mock_tx_${Date.now()}`;
+    console.log(`[MOCK] USDC received: ${expectedAmount} (tx: ${txHash})`);
+    return { txHash, amount: expectedAmount };
+  }
 
   const depositPubkey = new PublicKey(depositAddress);
 
@@ -151,6 +162,17 @@ export async function generateOfframpURL(
 ): Promise<{ offrampUrl: string; quoteId: string; expiresAt: Date }> {
   console.log(`Generating offramp URL for ${amount} USDC → ${currency}`);
 
+  // Mock mode: return fake URL
+  if (MOCK_MODE) {
+    const quoteId = `mock_quote_${Date.now()}`;
+    console.log(`[MOCK] Offramp URL generated: ${quoteId}`);
+    return {
+      offrampUrl: `https://pay.coinbase.com/sell?mock=true&quote=${quoteId}`,
+      quoteId,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    };
+  }
+
   const token = await generateCDPToken();
 
   const response = await fetch(`${CDP_API_URL}/onramp/v1/sell/quote`, {
@@ -214,6 +236,14 @@ export async function executeOfframp(
 // Activity: Confirm delivery (check webhook or poll)
 export async function confirmDelivery(orderId: string): Promise<boolean> {
   console.log(`Confirming delivery for order ${orderId}`);
+
+  // Mock mode: auto-confirm after short delay
+  if (MOCK_MODE) {
+    console.log("[MOCK] Simulating delivery confirmation...");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    console.log("[MOCK] Delivery confirmed");
+    return true;
+  }
 
   // Check database for webhook confirmation
   const result = await pool.query(
