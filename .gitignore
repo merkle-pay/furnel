@@ -17,7 +17,6 @@ caddy_config/
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
 

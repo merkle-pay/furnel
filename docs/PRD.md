@@ -33,8 +33,73 @@ User acquires USDC on their own (via MoonPay, Coinbase, exchange, etc.). Furnel 
 | **API** | Hono (Node.js) |
 | **Database** | PostgreSQL |
 | **Blockchain** | Solana (USDC-SPL) |
-| **Offramp** | Coinbase Offramp / Transak |
+| **Onramp** | MoonPay (browser widget) |
+| **Offramp** | Coinbase Offramp (browser redirect) |
 | **Reverse Proxy** | Caddy |
+
+## Frontend Integration
+
+Both onramp (MoonPay) and offramp (Coinbase) happen in the **browser**, not on the server.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         BROWSER                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. ONRAMP (optional)              2. OFFRAMP                   │
+│  ┌──────────────────┐              ┌──────────────────┐         │
+│  │   MoonPay Widget │              │  Coinbase Redirect│         │
+│  │   (iframe/popup) │              │  (new tab/window) │         │
+│  │                  │              │                   │         │
+│  │  USD → USDC      │              │  USDC → GBP/EUR  │         │
+│  └──────────────────┘              └──────────────────┘         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                │                              ▲
+                │ User gets USDC               │ Server returns
+                │ in wallet                    │ offramp URL
+                ▼                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                         SERVER (Furnel)                          │
+├─────────────────────────────────────────────────────────────────┤
+│  - Detect USDC deposit on Solana                                │
+│  - Generate Coinbase offramp URL                                │
+│  - Wait for webhook confirmation                                │
+│  - Track payment state                                          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### MoonPay Onramp (Browser Widget)
+
+User buys USDC directly in the browser. Server is not involved.
+
+```javascript
+// Frontend code - embed MoonPay widget
+const moonpayUrl = `https://buy.moonpay.com?apiKey=${MOONPAY_API_KEY}&currencyCode=usdc_sol&walletAddress=${userWallet}`;
+window.open(moonpayUrl, '_blank');
+```
+
+**Why browser-side?**
+- MoonPay handles KYC, card payments, compliance
+- No sensitive data on our server
+- User experience is seamless (widget/popup)
+
+### Coinbase Offramp (Browser Redirect)
+
+Server generates URL, user clicks it and completes on Coinbase.
+
+```
+1. Server calls Coinbase API → gets offramp URL
+2. Frontend shows "Complete on Coinbase" button
+3. User clicks → redirected to Coinbase
+4. User completes sale on Coinbase UI
+5. Coinbase sends webhook → Server confirms
+```
+
+**Why redirect?**
+- Coinbase requires user authentication
+- KYC/bank linking handled by Coinbase
+- We just orchestrate, they handle compliance
 
 ## Provider Integration
 
@@ -169,7 +234,7 @@ If offramp fails after USDC received:
 
 **Q: How does user get USDC?**
 
-A: Not our problem. User gets USDC however they want (MoonPay, Coinbase, exchange, friend, etc.).
+A: MoonPay widget in the browser. User clicks "Buy USDC" → MoonPay popup → pays with card → USDC lands in their Solana wallet. Server is not involved in onramp.
 
 **Q: KYC/AML requirements?**
 
