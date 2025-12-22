@@ -13,6 +13,8 @@ services:
       - "5432:5432"
     networks:
       - furnel-network
+    volumes:
+      - ./furnel-db-data:/var/lib/postgresql/data
     healthcheck:
       test:
         - CMD-SHELL
@@ -41,6 +43,8 @@ services:
       POSTGRES_DB: temporal
     networks:
       - furnel-network
+    volumes:
+      - ./temporal-db-data:/var/lib/postgresql/data
     healthcheck:
       test:
         - CMD-SHELL
