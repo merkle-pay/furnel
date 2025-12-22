@@ -6,16 +6,20 @@
     }
 
     # Temporal UI (no auth in dev)
-    handle /temporal/* {
-        uri strip_prefix /temporal
+    handle_path /temporal/* {
         reverse_proxy temporal-ui:8080
     }
 
     # PgWeb (no auth in dev)
-    handle /pgweb/* {
-        uri strip_prefix /pgweb
+    handle_path /pgweb/* {
         reverse_proxy pgweb:8081
     }
+
+    # Redirect without trailing slash
+    @noSlash {
+        path /temporal /pgweb
+    }
+    redir @noSlash {path}/ permanent
 
     # Web frontend (default)
     handle {

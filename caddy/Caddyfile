@@ -9,22 +9,26 @@
     }
 
     # Temporal UI (basic auth protected)
-    handle /temporal/* {
+    handle_path /temporal/* {
         basic_auth {
             {$CADDY_ADMIN_USER} {$CADDY_ADMIN_HASH}
         }
-        uri strip_prefix /temporal
         reverse_proxy temporal-ui:8080
     }
 
     # PgWeb (basic auth protected)
-    handle /pgweb/* {
+    handle_path /pgweb/* {
         basic_auth {
             {$CADDY_ADMIN_USER} {$CADDY_ADMIN_HASH}
         }
-        uri strip_prefix /pgweb
         reverse_proxy pgweb:8081
     }
+
+    # Redirect without trailing slash
+    @noSlash {
+        path /temporal /pgweb
+    }
+    redir @noSlash {path}/ permanent
 
     # Web frontend (default)
     handle {

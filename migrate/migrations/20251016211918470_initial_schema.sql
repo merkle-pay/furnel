@@ -4,7 +4,6 @@
 -- Payments table (main record)
 CREATE TABLE IF NOT EXISTS payments (
     id VARCHAR(64) PRIMARY KEY,
-    user_wallet_address VARCHAR(64) NOT NULL,
     deposit_address VARCHAR(64) NOT NULL,
     amount DECIMAL(20, 6) NOT NULL,
     currency VARCHAR(10) NOT NULL,
@@ -76,7 +75,7 @@ CREATE TABLE IF NOT EXISTS webhook_events (
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
-CREATE INDEX IF NOT EXISTS idx_payments_user_wallet ON payments(user_wallet_address);
+CREATE INDEX IF NOT EXISTS idx_payments_deposit_address ON payments(deposit_address);
 CREATE INDEX IF NOT EXISTS idx_payments_created_at ON payments(created_at);
 CREATE INDEX IF NOT EXISTS idx_payments_quote_id ON payments(quote_id);
 CREATE INDEX IF NOT EXISTS idx_payments_offramp_order_id ON payments(offramp_order_id);
