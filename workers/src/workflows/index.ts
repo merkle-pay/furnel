@@ -1,14 +1,12 @@
-import { proxyActivities, sleep } from "@temporalio/workflow";
+import { proxyActivities } from "@temporalio/workflow";
 import type * as activities from "../activities/index.js";
 
 const {
-  collectUSD,
-  mintUSDC,
+  waitForUSDC,
   lockFXRate,
   executeOfframp,
   confirmDelivery,
   refundUSDC,
-  returnUSD,
   updatePaymentStatus,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: "5 minutes",
@@ -21,17 +19,24 @@ const {
 });
 
 export interface PaymentInput {
+  paymentId: string;
   amount: number;
   currency: string;
-  recipientId: string;
+  depositAddress: string;
+  userWalletAddress: string;
+  recipientBankDetails: {
+    name: string;
+    accountNumber: string;
+    sortCode?: string;
+    iban?: string;
+  };
 }
 
 export interface PaymentState {
   status: string;
-  usdCollected?: boolean;
-  usdcMinted?: boolean;
-  fxRateLocked?: boolean;
-  offrampExecuted?: boolean;
+  usdcReceived?: boolean;
+  fxRate?: number;
+  offrampOrderId?: string;
   deliveryConfirmed?: boolean;
   error?: string;
 }
@@ -40,55 +45,49 @@ export async function paymentWorkflow(input: PaymentInput): Promise<PaymentState
   const state: PaymentState = { status: "INITIATED" };
 
   try {
-    // Step 1: Collect USD
-    await updatePaymentStatus(input.recipientId, "USD_COLLECTING");
-    await collectUSD(input.amount, input.recipientId);
-    state.usdCollected = true;
-    state.status = "USD_COLLECTED";
-    await updatePaymentStatus(input.recipientId, state.status);
+    // Step 1: Wait for USDC deposit
+    await updatePaymentStatus(input.paymentId, "WAITING_FOR_USDC");
+    const deposit = await waitForUSDC(input.depositAddress, input.amount);
+    state.usdcReceived = true;
+    state.status = "USDC_RECEIVED";
+    await updatePaymentStatus(input.paymentId, state.status);
 
-    // Step 2: Mint USDC
-    await updatePaymentStatus(input.recipientId, "USDC_MINTING");
-    await mintUSDC(input.amount);
-    state.usdcMinted = true;
-    state.status = "USDC_MINTED";
-    await updatePaymentStatus(input.recipientId, state.status);
-
-    // Step 3: Lock FX Rate
-    await updatePaymentStatus(input.recipientId, "FX_LOCKING");
-    const fxRate = await lockFXRate(input.currency);
-    state.fxRateLocked = true;
+    // Step 2: Lock FX Rate
+    await updatePaymentStatus(input.paymentId, "LOCKING_FX");
+    const fx = await lockFXRate(input.currency);
+    state.fxRate = fx.rate;
     state.status = "FX_LOCKED";
-    await updatePaymentStatus(input.recipientId, state.status);
+    await updatePaymentStatus(input.paymentId, state.status);
 
-    // Step 4: Execute Offramp
-    await updatePaymentStatus(input.recipientId, "OFFRAMPING");
-    const localAmount = input.amount * fxRate;
-    await executeOfframp(localAmount, input.currency, input.recipientId);
-    state.offrampExecuted = true;
+    // Step 3: Execute Offramp
+    await updatePaymentStatus(input.paymentId, "OFFRAMPING");
+    const localAmount = input.amount * fx.rate;
+    const offramp = await executeOfframp(
+      localAmount,
+      input.currency,
+      input.recipientBankDetails
+    );
+    state.offrampOrderId = offramp.orderId;
     state.status = "LOCAL_SENT";
-    await updatePaymentStatus(input.recipientId, state.status);
+    await updatePaymentStatus(input.paymentId, state.status);
 
-    // Step 5: Confirm Delivery
-    await updatePaymentStatus(input.recipientId, "CONFIRMING");
-    await confirmDelivery(input.recipientId);
+    // Step 4: Confirm Delivery
+    await updatePaymentStatus(input.paymentId, "CONFIRMING");
+    await confirmDelivery(offramp.orderId);
     state.deliveryConfirmed = true;
     state.status = "COMPLETED";
-    await updatePaymentStatus(input.recipientId, state.status);
+    await updatePaymentStatus(input.paymentId, state.status);
 
     return state;
   } catch (error) {
     // Compensation: Saga rollback
     state.status = "COMPENSATING";
     state.error = String(error);
-    await updatePaymentStatus(input.recipientId, state.status);
+    await updatePaymentStatus(input.paymentId, state.status);
 
     try {
-      if (state.usdcMinted) {
-        await refundUSDC(input.amount);
-      }
-      if (state.usdCollected) {
-        await returnUSD(input.amount, input.recipientId);
+      if (state.usdcReceived) {
+        await refundUSDC(input.amount, input.userWalletAddress);
       }
       state.status = "REFUNDED";
     } catch (compensationError) {
@@ -96,7 +95,7 @@ export async function paymentWorkflow(input: PaymentInput): Promise<PaymentState
       state.error = `Original: ${error}, Compensation: ${compensationError}`;
     }
 
-    await updatePaymentStatus(input.recipientId, state.status);
+    await updatePaymentStatus(input.paymentId, state.status);
     return state;
   }
 }
