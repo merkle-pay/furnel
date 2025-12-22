@@ -1,0 +1,51 @@
+{
+    debug
+    log {
+        level DEBUG
+    }
+}
+
+# Local development - use localhost
+localhost:80 {
+    log {
+        output stdout
+        format console
+        level DEBUG
+    }
+
+    # API routes
+    handle /api/* {
+        reverse_proxy api:3000
+    }
+
+    # Temporal UI (authenticated)
+    handle /temporal/* {
+        reverse_proxy temporal-ui-proxy:8008
+    }
+
+    # PgWeb for database access
+    handle /pgweb/* {
+        reverse_proxy pgweb:8081
+    }
+
+    # Default to API
+    handle {
+        reverse_proxy api:3000
+    }
+}
+
+# Production example (uncomment and modify for your domain)
+# payment.yourdomain.com {
+#     reverse_proxy api:3000
+# }
+#
+# temporal.yourdomain.com {
+#     reverse_proxy temporal-ui-proxy:8008
+# }
+#
+# db.yourdomain.com {
+#     basic_auth {
+#         admin $2a$14$your_bcrypt_hash_here
+#     }
+#     reverse_proxy pgweb:8081
+# }

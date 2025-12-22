@@ -1,0 +1,175 @@
+services:
+  # PostgreSQL for app data (payments, transactions, etc.)
+  postgres:
+    image: postgres:18.1-trixie
+    container_name: payment-postgres
+    environment:
+      POSTGRES_USER: payment
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: payment_db
+    networks:
+      - payment-network
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment -d payment_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Temporal server (auto-setup for development)
+  temporal:
+    image: temporalio/auto-setup:1.28.0
+    container_name: temporal
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=${POSTGRES_PASSWORD}
+      - POSTGRES_SEEDS=temporal-db
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    networks:
+      - payment-network
+    depends_on:
+      temporal-db:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+
+  # PostgreSQL for Temporal (separate from app DB)
+  temporal-db:
+    image: postgres:18.1-trixie
+    container_name: temporal-db
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: temporal
+    networks:
+      - payment-network
+    volumes:
+      - ./temporal-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Temporal UI (internal only, proxied via Express)
+  temporal-ui:
+    image: temporalio/ui:2.39.0
+    container_name: temporal-ui
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:8008
+    networks:
+      - payment-network
+    depends_on:
+      - temporal
+    restart: unless-stopped
+
+  # Express Auth Proxy for Temporal UI
+  temporal-ui-proxy:
+    build: ./ui-proxy
+    container_name: temporal-ui-proxy
+    ports:
+      - "127.0.0.1:8008:8008"
+    networks:
+      - payment-network
+    depends_on:
+      - temporal
+      - temporal-ui
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Temporal Admin Tools
+  temporal-admin-tools:
+    image: temporalio/admin-tools:1.28.0-tctl-1.18.2-cli-1.3.0
+    container_name: temporal-admin-tools
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    networks:
+      - payment-network
+    depends_on:
+      - temporal
+    stdin_open: true
+    tty: true
+
+  # Hono API Server
+  api:
+    build: ./api
+    container_name: payment-api
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - payment-network
+    depends_on:
+      - postgres
+      - temporal
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Temporal Workers
+  workers:
+    build: ./workers
+    container_name: payment-workers
+    networks:
+      - payment-network
+    depends_on:
+      - temporal
+      - postgres
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  # Caddy Reverse Proxy
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy_data:/data
+      - ./caddy_config:/config
+    networks:
+      - payment-network
+    restart: unless-stopped
+    depends_on:
+      - api
+      - temporal-ui-proxy
+
+  # PgWeb for database access
+  pgweb:
+    image: sosedoff/pgweb:latest
+    container_name: payment-pgweb
+    environment:
+      - DATABASE_URL=postgres://payment:${POSTGRES_PASSWORD}@postgres:5432/payment_db?sslmode=disable
+    networks:
+      - payment-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+networks:
+  payment-network:
+    driver: bridge
+    name: payment-network
