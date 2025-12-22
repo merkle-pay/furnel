@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { Client, Connection } from "@temporalio/client";
+import { pool } from "../lib/db.js";
 
 export const paymentRoutes = new Hono();
 
@@ -19,27 +20,91 @@ async function getTemporalClient(): Promise<Client> {
 // Create a new payment
 paymentRoutes.post("/", async (c) => {
   const body = await c.req.json();
-  const { amount, currency, recipientId } = body;
+  const {
+    amount,
+    currency,
+    userWalletAddress,
+    recipientName,
+    recipientAccountNumber,
+    recipientSortCode,
+    recipientIban,
+  } = body;
 
-  if (!amount || !currency || !recipientId) {
-    return c.json({ error: "Missing required fields" }, 400);
+  if (!amount || !currency || !userWalletAddress) {
+    return c.json(
+      { error: "Missing required fields: amount, currency, userWalletAddress" },
+      400
+    );
   }
 
   try {
     const client = await getTemporalClient();
-    const workflowId = `payment-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const paymentId = `pay_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+    // Generate a deposit address (in production, this would be a unique Solana address)
+    // For now, use a placeholder - you'd integrate with a wallet service
+    const depositAddress = process.env.FURNEL_DEPOSIT_ADDRESS || "PLACEHOLDER_DEPOSIT_ADDRESS";
+
+    // Redirect URL after user completes offramp
+    const redirectUrl =
+      process.env.REDIRECT_URL || "http://localhost/api/webhooks/coinbase/callback";
+
+    // Insert payment record
+    await pool.query(
+      `INSERT INTO payments (
+        id, user_wallet_address, deposit_address, amount, currency, status,
+        recipient_name, recipient_account_number, recipient_sort_code, recipient_iban,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, 'INITIATED', $6, $7, $8, $9, NOW(), NOW())`,
+      [
+        paymentId,
+        userWalletAddress,
+        depositAddress,
+        amount,
+        currency,
+        recipientName,
+        recipientAccountNumber,
+        recipientSortCode,
+        recipientIban,
+      ]
+    );
 
     // Start the payment workflow
     const handle = await client.workflow.start("paymentWorkflow", {
       taskQueue: "furnel-queue",
-      workflowId,
-      args: [{ amount, currency, recipientId }],
+      workflowId: paymentId,
+      args: [
+        {
+          paymentId,
+          amount,
+          currency,
+          depositAddress,
+          userWalletAddress,
+          redirectUrl,
+          recipientBankDetails: {
+            name: recipientName,
+            accountNumber: recipientAccountNumber,
+            sortCode: recipientSortCode,
+            iban: recipientIban,
+          },
+        },
+      ],
     });
 
+    // Update with workflow ID
+    await pool.query(
+      "UPDATE payments SET workflow_id = $2 WHERE id = $1",
+      [paymentId, handle.workflowId]
+    );
+
     return c.json({
+      paymentId,
       workflowId: handle.workflowId,
-      status: "initiated",
-      message: "Payment workflow started",
+      depositAddress,
+      amount,
+      currency,
+      status: "INITIATED",
+      message: "Send USDC to the deposit address to proceed",
     });
   } catch (error) {
     console.error("Failed to start payment workflow:", error);
@@ -48,31 +113,66 @@ paymentRoutes.post("/", async (c) => {
 });
 
 // Get payment status
-paymentRoutes.get("/:workflowId", async (c) => {
-  const workflowId = c.req.param("workflowId");
+paymentRoutes.get("/:paymentId", async (c) => {
+  const paymentId = c.req.param("paymentId");
 
   try {
-    const client = await getTemporalClient();
-    const handle = client.workflow.getHandle(workflowId);
-    const description = await handle.describe();
+    // Get from database
+    const result = await pool.query(
+      `SELECT
+        id, user_wallet_address, deposit_address, amount, currency, status,
+        recipient_name, fx_rate, quote_id, offramp_url, offramp_order_id,
+        error_message, workflow_id, created_at, updated_at
+       FROM payments WHERE id = $1`,
+      [paymentId]
+    );
+
+    if (result.rows.length === 0) {
+      return c.json({ error: "Payment not found" }, 404);
+    }
+
+    const payment = result.rows[0];
+
+    // Also get workflow status from Temporal
+    let workflowStatus = null;
+    if (payment.workflow_id) {
+      try {
+        const client = await getTemporalClient();
+        const handle = client.workflow.getHandle(payment.workflow_id);
+        const description = await handle.describe();
+        workflowStatus = {
+          status: description.status.name,
+          startTime: description.startTime,
+          closeTime: description.closeTime,
+        };
+      } catch {
+        // Workflow might not exist yet
+      }
+    }
 
     return c.json({
-      workflowId,
-      status: description.status.name,
-      startTime: description.startTime,
-      closeTime: description.closeTime,
+      ...payment,
+      workflow: workflowStatus,
     });
   } catch (error) {
     console.error("Failed to get payment status:", error);
-    return c.json({ error: "Payment not found" }, 404);
+    return c.json({ error: "Failed to get payment" }, 500);
   }
 });
 
 // List recent payments
 paymentRoutes.get("/", async (c) => {
-  // TODO: Query from database
-  return c.json({
-    payments: [],
-    message: "TODO: Implement database query",
-  });
+  try {
+    const result = await pool.query(
+      `SELECT id, amount, currency, status, created_at
+       FROM payments
+       ORDER BY created_at DESC
+       LIMIT 50`
+    );
+
+    return c.json({ payments: result.rows });
+  } catch (error) {
+    console.error("Failed to list payments:", error);
+    return c.json({ error: "Failed to list payments" }, 500);
+  }
 });

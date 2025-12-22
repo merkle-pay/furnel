@@ -20,6 +20,18 @@ services:
       timeout: 5s
       retries: 5
 
+  furnel-migrate:
+    image: ghcr.io/merkle-pay/furnel-migrate:latest
+    container_name: furnel-migrate
+    env_file:
+      - .env
+    depends_on:
+      furnel-db:
+        condition: service_healthy
+    networks:
+      - furnel-network
+    restart: "no"
+
   # Temporal server (auto-setup for development)
   temporal:
     image: temporalio/auto-setup:1.28.0

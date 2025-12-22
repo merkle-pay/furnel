@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { paymentRoutes } from "./routes/payments.js";
 import { healthRoutes } from "./routes/health.js";
+import { webhookRoutes } from "./routes/webhooks.js";
 
 const app = new Hono();
 
@@ -14,6 +15,7 @@ app.use("*", cors());
 // Routes
 app.route("/api", healthRoutes);
 app.route("/api/payments", paymentRoutes);
+app.route("/api/webhooks", webhookRoutes);
 
 // 404 handler
 app.notFound((c) => c.json({ error: "Not found" }, 404));

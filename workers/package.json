@@ -8,10 +8,13 @@
     "start": "node dist/worker.js"
   },
   "dependencies": {
+    "@coinbase/coinbase-sdk": "^0.15.0",
+    "@solana/web3.js": "^1.98.0",
     "@temporalio/activity": "^1.11.2",
     "@temporalio/client": "^1.11.2",
     "@temporalio/worker": "^1.12.1",
     "@temporalio/workflow": "^1.12.1",
+    "jose": "^5.9.6",
     "pg": "^8.13.1"
   },
   "devDependencies": {

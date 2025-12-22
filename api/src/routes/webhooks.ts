@@ -1,0 +1,107 @@
+import { Hono } from "hono";
+import { pool } from "../lib/db.js";
+
+export const webhookRoutes = new Hono();
+
+// Coinbase Offramp webhook
+// Called when offramp transaction status changes
+webhookRoutes.post("/coinbase", async (c) => {
+  const body = await c.req.json();
+
+  console.log("Coinbase webhook received:", JSON.stringify(body, null, 2));
+
+  // Verify webhook signature (TODO: implement signature verification)
+  // const signature = c.req.header("x-coinbase-signature");
+
+  const { event_type, data } = body;
+
+  try {
+    switch (event_type) {
+      case "offramp.completed":
+        // Transaction completed successfully
+        await pool.query(
+          `UPDATE payments
+           SET status = 'DELIVERED',
+               offramp_completed_at = NOW(),
+               updated_at = NOW()
+           WHERE offramp_order_id = $1`,
+          [data.order_id]
+        );
+        break;
+
+      case "offramp.failed":
+        // Transaction failed
+        await pool.query(
+          `UPDATE payments
+           SET status = 'OFFRAMP_FAILED',
+               error_message = $2,
+               updated_at = NOW()
+           WHERE offramp_order_id = $1`,
+          [data.order_id, data.failure_reason || "Unknown error"]
+        );
+        break;
+
+      case "offramp.pending":
+        // Transaction is processing
+        await pool.query(
+          `UPDATE payments
+           SET status = 'OFFRAMPING',
+               updated_at = NOW()
+           WHERE offramp_order_id = $1`,
+          [data.order_id]
+        );
+        break;
+
+      default:
+        console.log(`Unknown event type: ${event_type}`);
+    }
+
+    // Log webhook event
+    await pool.query(
+      `INSERT INTO webhook_events (provider, event_type, payload, created_at)
+       VALUES ('coinbase', $1, $2, NOW())`,
+      [event_type, JSON.stringify(body)]
+    );
+
+    return c.json({ received: true });
+  } catch (error) {
+    console.error("Webhook processing error:", error);
+    return c.json({ error: "Webhook processing failed" }, 500);
+  }
+});
+
+// Offramp redirect callback
+// User is redirected here after completing offramp on Coinbase
+webhookRoutes.get("/coinbase/callback", async (c) => {
+  const quoteId = c.req.query("quote_id");
+  const status = c.req.query("status");
+
+  console.log(`Coinbase callback: quote_id=${quoteId}, status=${status}`);
+
+  if (!quoteId) {
+    return c.json({ error: "Missing quote_id" }, 400);
+  }
+
+  try {
+    // Update payment with callback info
+    await pool.query(
+      `UPDATE payments
+       SET offramp_callback_status = $2,
+           offramp_callback_at = NOW(),
+           updated_at = NOW()
+       WHERE quote_id = $1`,
+      [quoteId, status]
+    );
+
+    // Redirect to frontend success/failure page
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3001";
+    if (status === "success") {
+      return c.redirect(`${frontendUrl}/payment/success?quote_id=${quoteId}`);
+    } else {
+      return c.redirect(`${frontendUrl}/payment/failed?quote_id=${quoteId}`);
+    }
+  } catch (error) {
+    console.error("Callback processing error:", error);
+    return c.json({ error: "Callback processing failed" }, 500);
+  }
+});
