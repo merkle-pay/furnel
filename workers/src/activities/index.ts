@@ -322,3 +322,38 @@ export async function updatePaymentStatus(
     [paymentId, status]
   );
 }
+
+// Activity: Send offramp email to recipient
+// The recipient must click the Coinbase link to receive funds
+// For now, this is mocked - just logs the link and returns success
+export async function sendOfframpEmail(
+  recipientEmail: string,
+  recipientName: string,
+  offrampUrl: string,
+  amount: number,
+  currency: string,
+  paymentId: string
+): Promise<{ sent: boolean; offrampUrl: string }> {
+  // Always log the link prominently so it's easy to find
+  console.log("");
+  console.log("=".repeat(60));
+  console.log("OFFRAMP LINK FOR RECIPIENT");
+  console.log("=".repeat(60));
+  console.log(`  Recipient: ${recipientName} <${recipientEmail}>`);
+  console.log(`  Amount: $${amount} USD → ${currency}`);
+  console.log(`  Payment ID: ${paymentId}`);
+  console.log("");
+  console.log(`  LINK: ${offrampUrl}`);
+  console.log("");
+  console.log("  (Share this link with the recipient to complete the transfer)");
+  console.log("=".repeat(60));
+  console.log("");
+
+  // Store offramp URL in database so frontend can retrieve it
+  await pool.query(
+    `UPDATE payments SET offramp_url = $2, updated_at = NOW() WHERE id = $1`,
+    [paymentId, offrampUrl]
+  );
+
+  return { sent: true, offrampUrl };
+}

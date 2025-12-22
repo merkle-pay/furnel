@@ -19,6 +19,7 @@ const {
   generateOfframpURL,
   refundUSDC,
   updatePaymentStatus,
+  sendOfframpEmail,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: "5 minutes",
   retry: {
@@ -80,6 +81,7 @@ export interface PaymentInput {
   currency: string;
   depositAddress: string;
   redirectUrl: string;
+  recipientEmail: string;
   recipientBankDetails: {
     name: string;
     accountNumber: string;
@@ -98,6 +100,7 @@ export interface PaymentState {
   offrampUrl?: string;
   quoteId?: string;
   offrampOrderId?: string;
+  emailSent: boolean;
   deliveryConfirmed: boolean;
   cancelled: boolean;
   cancelReason?: string;
@@ -237,6 +240,7 @@ export async function paymentWorkflow(input: PaymentInput): Promise<PaymentState
   const state: PaymentState = {
     status: "INITIATED",
     usdcReceived: false,
+    emailSent: false,
     deliveryConfirmed: false,
     cancelled: false,
   };
@@ -412,10 +416,28 @@ export async function paymentWorkflow(input: PaymentInput): Promise<PaymentState
 
     state.offrampUrl = offramp.offrampUrl;
     state.quoteId = offramp.quoteId;
-    state.status = "AWAITING_USER_ACTION";
+
+    // ----- Step 4: Send Email to Recipient -----
+    // The recipient must click the Coinbase link to receive funds
+    await updatePaymentStatus(input.paymentId, "SENDING_RECIPIENT_EMAIL");
+    state.status = "SENDING_RECIPIENT_EMAIL";
+
+    const emailResult = await sendOfframpEmail(
+      input.recipientEmail,
+      input.recipientBankDetails.name,
+      offramp.offrampUrl,
+      input.amount,
+      input.currency,
+      input.paymentId
+    );
+
+    state.emailSent = emailResult.sent;
+    state.offrampUrl = emailResult.offrampUrl;
+    state.status = "AWAITING_RECIPIENT_ACTION";
     await updatePaymentStatus(input.paymentId, state.status);
 
-    // ----- Step 4: Wait for Offramp Completion -----
+    // ----- Step 5: Wait for Offramp Completion -----
+    // Recipient clicks the link, completes on Coinbase, we get webhook
     await updatePaymentStatus(input.paymentId, "WAITING_FOR_OFFRAMP");
     state.status = "WAITING_FOR_OFFRAMP";
 

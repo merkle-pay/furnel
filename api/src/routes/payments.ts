@@ -24,6 +24,7 @@ paymentRoutes.post("/", async (c) => {
     amount,
     currency,
     recipientName,
+    recipientEmail,
     recipientAccountNumber,
     recipientSortCode,
     recipientIban,
@@ -32,6 +33,13 @@ paymentRoutes.post("/", async (c) => {
   if (!amount || !currency) {
     return c.json(
       { error: "Missing required fields: amount, currency" },
+      400
+    );
+  }
+
+  if (!recipientEmail) {
+    return c.json(
+      { error: "Missing required field: recipientEmail (needed to send Coinbase link)" },
       400
     );
   }
@@ -52,15 +60,16 @@ paymentRoutes.post("/", async (c) => {
     await pool.query(
       `INSERT INTO payments (
         id, deposit_address, amount, currency, status,
-        recipient_name, recipient_account_number, recipient_sort_code, recipient_iban,
+        recipient_name, recipient_email, recipient_account_number, recipient_sort_code, recipient_iban,
         created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, 'INITIATED', $5, $6, $7, $8, NOW(), NOW())`,
+      ) VALUES ($1, $2, $3, $4, 'INITIATED', $5, $6, $7, $8, $9, NOW(), NOW())`,
       [
         paymentId,
         depositAddress,
         amount,
         currency,
         recipientName,
+        recipientEmail,
         recipientAccountNumber,
         recipientSortCode,
         recipientIban,
@@ -78,6 +87,7 @@ paymentRoutes.post("/", async (c) => {
           currency,
           depositAddress,
           redirectUrl,
+          recipientEmail,
           recipientBankDetails: {
             name: recipientName,
             accountNumber: recipientAccountNumber,
@@ -118,7 +128,7 @@ paymentRoutes.get("/:paymentId", async (c) => {
     const result = await pool.query(
       `SELECT
         id, user_wallet_address, deposit_address, amount, currency, status,
-        recipient_name, fx_rate, quote_id, offramp_url, offramp_order_id,
+        recipient_name, recipient_email, fx_rate, quote_id, offramp_url, offramp_order_id,
         error_message, workflow_id, created_at, updated_at
        FROM payments WHERE id = $1`,
       [paymentId]

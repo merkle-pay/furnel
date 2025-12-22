@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { MoonPayBuyWidget } from "@moonpay/moonpay-react";
-import { DollarSign, Building2, User, ArrowRight } from "lucide-react";
+import { DollarSign, Building2, User, ArrowRight, Mail } from "lucide-react";
 
 export const Route = createFileRoute("/")({ component: PaymentPage });
 
@@ -11,6 +11,7 @@ function PaymentPage() {
   const [formData, setFormData] = useState({
     amount: "",
     recipientName: "",
+    recipientEmail: "",
     accountNumber: "",
     sortCode: "",
     currency: "GBP",
@@ -18,7 +19,34 @@ function PaymentPage() {
   const [paymentResult, setPaymentResult] = useState<{
     paymentId: string;
     depositAddress: string;
+    offrampUrl?: string;
   } | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+
+  // Poll for payment status to get offramp URL
+  const pollPaymentStatus = async (paymentId: string) => {
+    setIsPolling(true);
+    const maxAttempts = 60; // 5 minutes with 5s intervals
+
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const response = await fetch(`/api/payments/${paymentId}`);
+        const data = await response.json();
+
+        if (data.offramp_url) {
+          setPaymentResult(prev => prev ? { ...prev, offrampUrl: data.offramp_url } : null);
+          setIsPolling(false);
+          return;
+        }
+
+        // Wait 5 seconds before next poll
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      } catch (error) {
+        console.error("Error polling payment status:", error);
+      }
+    }
+    setIsPolling(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,6 +60,7 @@ function PaymentPage() {
           amount: Number.parseFloat(formData.amount),
           currency: formData.currency,
           recipientName: formData.recipientName,
+          recipientEmail: formData.recipientEmail,
           recipientAccountNumber: formData.accountNumber,
           recipientSortCode: formData.sortCode,
         }),
@@ -131,6 +160,26 @@ function PaymentPage() {
                   className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 text-sm font-medium mb-2">
+                  <Mail className="inline w-4 h-4 mr-1" />
+                  Recipient Email
+                </label>
+                <input
+                  type="email"
+                  value={formData.recipientEmail}
+                  onChange={(e) =>
+                    setFormData({ ...formData, recipientEmail: e.target.value })
+                  }
+                  placeholder="john@example.com"
+                  className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
+                  required
+                />
+                <p className="text-gray-500 text-xs mt-1">
+                  We'll send them the Coinbase link to receive the funds
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -253,7 +302,12 @@ function PaymentPage() {
 
             <button
               type="button"
-              onClick={() => setStep("confirm")}
+              onClick={() => {
+                setStep("confirm");
+                if (paymentResult?.paymentId) {
+                  pollPaymentStatus(paymentResult.paymentId);
+                }
+              }}
               className="w-full py-4 bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold rounded-xl transition-all"
             >
               I've Completed the Purchase
@@ -262,32 +316,75 @@ function PaymentPage() {
         )}
 
         {step === "confirm" && (
-          <div className="bg-slate-800/50 backdrop-blur-sm border border-green-500/50 rounded-xl p-8 text-center">
-            <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg
-                className="w-8 h-8 text-green-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
+          <div className="space-y-6">
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-green-500/50 rounded-xl p-8 text-center">
+              <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                {isPolling ? (
+                  <svg className="w-8 h-8 text-cyan-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg
+                    className="w-8 h-8 text-green-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                )}
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">
+                {isPolling ? "Processing..." : "Payment Processing"}
+              </h3>
+              <p className="text-gray-400 mb-4">
+                {isPolling
+                  ? "Detecting your USDC deposit and generating the Coinbase link..."
+                  : `We'll send an email to ${formData.recipientEmail} with a link to receive ${formData.currency}.`
+                }
+              </p>
+              <p className="text-gray-500 text-sm mb-4">
+                {formData.recipientName} will need to click the link and complete
+                the transfer on Coinbase to receive the funds.
+              </p>
+              <p className="text-cyan-400 text-sm">
+                Payment ID: {paymentResult?.paymentId}
+              </p>
             </div>
-            <h3 className="text-2xl font-bold text-white mb-2">
-              Payment Processing
-            </h3>
-            <p className="text-gray-400 mb-4">
-              We're detecting your USDC deposit. Once confirmed, we'll convert
-              it to {formData.currency} and send to {formData.recipientName}.
-            </p>
-            <p className="text-cyan-400 text-sm">
-              Payment ID: {paymentResult?.paymentId}
-            </p>
+
+            {/* Show offramp URL when available */}
+            {paymentResult?.offrampUrl && (
+              <div className="bg-slate-800/50 backdrop-blur-sm border border-cyan-500/50 rounded-xl p-6">
+                <h3 className="text-white font-semibold mb-2 flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-cyan-400" />
+                  Coinbase Link Ready
+                </h3>
+                <p className="text-gray-400 text-sm mb-4">
+                  Share this link with <span className="text-cyan-400">{formData.recipientName}</span> to
+                  complete the transfer. They'll receive the funds in their Coinbase-linked bank account.
+                </p>
+                <div className="bg-slate-900 rounded-lg p-4 mb-4">
+                  <p className="text-cyan-400 text-sm font-mono break-all">
+                    {paymentResult.offrampUrl}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(paymentResult.offrampUrl || "");
+                  }}
+                  className="w-full py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg transition-colors"
+                >
+                  Copy Link
+                </button>
+              </div>
+            )}
           </div>
         )}
       </section>
