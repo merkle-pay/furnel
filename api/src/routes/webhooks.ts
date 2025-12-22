@@ -10,9 +10,9 @@ export const webhookRoutes = new Hono();
 function verifyMoonPaySignature(
   payload: string,
   signatureHeader: string | undefined,
-  webhookSecret: string
+  webhookSigningKey: string
 ): boolean {
-  if (!signatureHeader || !webhookSecret) return false;
+  if (!signatureHeader || !webhookSigningKey) return false;
 
   // Parse header: t=<timestamp>,s=<signature>
   const parts = signatureHeader.split(",");
@@ -28,18 +28,18 @@ function verifyMoonPaySignature(
   const signedPayload = `${timestamp}.${payload}`;
 
   // Generate expected signature
-  const expectedSignature = createHmac("sha256", webhookSecret)
+  const expectedSignature = createHmac("sha256", webhookSigningKey)
     .update(signedPayload)
     .digest("hex");
 
   // Debug: compare signatures
   console.log("  - Received signature:", signature);
   console.log("  - Expected signature:", expectedSignature);
-  console.log("  - Secret length:", webhookSecret.length);
-  console.log("  - Secret preview:", webhookSecret.substring(0, 5) + "...");
+  console.log("  - Signing key length:", webhookSigningKey.length);
+  console.log("  - Signing key prefix:", webhookSigningKey.substring(0, 10) + "...");
   console.log("  - Timestamp:", timestamp);
   console.log("  - Payload length:", payload.length);
-  console.log("  - Payload first 100 chars:", payload.substring(0, 100));
+  console.log("  - Signed payload preview:", signedPayload.substring(0, 150));
 
   return signature === expectedSignature;
 }
@@ -48,15 +48,24 @@ function verifyMoonPaySignature(
 webhookRoutes.post("/moonpay", async (c) => {
   const rawBody = await c.req.text();
   const signatureHeader = c.req.header("Moonpay-Signature-V2");
-  const webhookSecret = process.env.MOONPAY_WEBHOOK_SECRET;
+  const webhookSigningKey = process.env.MOONPAY_WEBHOOK_SIGNING_KEY;
 
   // Debug logging
   console.log("MoonPay webhook received:");
   console.log("  - Signature header:", signatureHeader ? "present" : "missing");
-  console.log("  - Webhook secret configured:", webhookSecret ? "yes" : "no");
+  console.log("  - Webhook signing key configured:", webhookSigningKey ? "yes" : "no");
 
-  // TODO: Fix signature verification - hardcoded skip for now
-  console.log("MoonPay webhook: Signature verification SKIPPED (hardcoded)");
+  // Verify webhook signature
+  if (webhookSigningKey && signatureHeader) {
+    const isValid = verifyMoonPaySignature(rawBody, signatureHeader, webhookSigningKey);
+    if (!isValid) {
+      console.error("MoonPay webhook signature verification FAILED");
+      return c.json({ error: "Invalid signature" }, 401);
+    }
+    console.log("MoonPay webhook signature verification PASSED");
+  } else if (!webhookSigningKey) {
+    console.log("MoonPay webhook: No signing key configured, skipping verification");
+  }
 
   // Log if signature verification was skipped
   if (!signatureHeader) {

@@ -4,22 +4,22 @@ MoonPay handles the fiat-to-crypto onramp. Users pay with card, MoonPay sends US
 
 ## Keys
 
-| Key | Purpose | Location |
-|-----|---------|----------|
-| `pk_test_...` (publishable) | Frontend widget | `VITE_MOONPAY_API_KEY` |
-| `sk_test_...` (secret) | Server-side URL signing | `MOONPAY_SECRET_KEY` |
-| Webhook Signing Secret | Verify webhook signatures | `MOONPAY_WEBHOOK_SECRET` |
+| Key                         | Purpose                   | Location                      |
+| --------------------------- | ------------------------- | ----------------------------- |
+| `pk_test_...` (publishable) | Frontend widget           | `VITE_MOONPAY_API_KEY`        |
+| `sk_test_...` (secret)      | Server-side URL signing   | `MOONPAY_SECRET_KEY`          |
+| Webhook Signing Key         | Verify webhook signatures | `MOONPAY_WEBHOOK_SIGNING_KEY` |
 
 ### Webhook Keys Explained
 
 MoonPay dashboard shows two webhook values:
 
-| Field | Example | Purpose |
-|-------|---------|---------|
-| **Signing Key** | `wk_test_abc123...` | Identifier (not needed) |
-| **Signing Secret** | `random_string_here` | Actual secret for HMAC verification |
+| Field                  | Example              | Purpose                              |
+| ---------------------- | -------------------- | ------------------------------------ |
+| **Webhook Signing Key** | `wk_test_abc123...`  | **Use this** for HMAC verification   |
+| **Per-URL Signing Secret** | `random_string_here` | Per-endpoint secret (not used)    |
 
-**We only need the Signing Secret** - this is used to verify webhook authenticity:
+**Use the Webhook Signing Key** (`wk_test_...`) for signature verification:
 
 ```
 MoonPay:
@@ -55,17 +55,17 @@ MoonPay sandbox requires specific test addresses:
 
 **Success Cards:**
 
-| Brand | Number |
-|-------|--------|
-| Visa | `4929 4205 7359 5709` |
+| Brand      | Number                |
+| ---------- | --------------------- |
+| Visa       | `4929 4205 7359 5709` |
 | Mastercard | `5281 4388 0180 4148` |
 
 **Decline Cards:**
 
-| Number | Scenario |
-|--------|----------|
-| `4929 5736 3812 5985` | Insufficient funds |
-| `4532 3367 4387 4205` | Expired card |
+| Number                | Scenario                |
+| --------------------- | ----------------------- |
+| `4929 5736 3812 5985` | Insufficient funds      |
+| `4532 3367 4387 4205` | Expired card            |
 | `4242 4242 4242 4242` | 3DS error (amount ≥£25) |
 
 **CVV:** Any 3 digits (e.g., `123`) | **Expiry:** Any future date (e.g., `12/26`)
@@ -80,22 +80,22 @@ MoonPay sends transaction updates to: `POST /api/webhooks/moonpay`
 
 ### Events
 
-| Event | Description |
-|-------|-------------|
-| `transaction_created` | User started purchase |
-| `transaction_updated` | Status changed (pending, completed) |
-| `transaction_failed` | Transaction failed (payment declined, etc.) |
+| Event                 | Description                                 |
+| --------------------- | ------------------------------------------- |
+| `transaction_created` | User started purchase                       |
+| `transaction_updated` | Status changed (pending, completed)         |
+| `transaction_failed`  | Transaction failed (payment declined, etc.) |
 
 ### Signature Verification
 
 Signature verification ensures webhooks actually came from MoonPay and weren't tampered with.
 
-| Environment | Verification | Reason |
-|-------------|--------------|--------|
-| **Development/Sandbox** | Optional | No real money, skip for simplicity |
-| **Production** | Required | Prevents fake "payment completed" attacks |
+| Environment             | Verification | Reason                                    |
+| ----------------------- | ------------ | ----------------------------------------- |
+| **Development/Sandbox** | Optional     | No real money, skip for simplicity        |
+| **Production**          | Required     | Prevents fake "payment completed" attacks |
 
-**Current status:** Verification is skipped in development. Webhooks are received and processed without signature validation.
+**Current status:** Signature verification is working in sandbox mode using the Webhook Signing Key (`wk_test_...`).
 
 #### How It Works
 
@@ -143,7 +143,7 @@ import { MoonPayBuyWidget } from "@moonpay/moonpay-react";
   walletAddress={depositAddress}
   visible={showWidget}
   onClose={async () => setShowWidget(false)}
-/>
+/>;
 ```
 
 ## Flow
