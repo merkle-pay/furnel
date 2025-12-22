@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { MoonPayBuyWidget } from "@moonpay/moonpay-react";
-import { DollarSign, Building2, User, CreditCard, ArrowRight } from "lucide-react";
+import { DollarSign, Building2, User, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/")({ component: PaymentPage });
 
@@ -15,7 +15,6 @@ function PaymentPage() {
     sortCode: "",
     currency: "GBP",
   });
-  const [walletAddress, setWalletAddress] = useState("");
   const [paymentResult, setPaymentResult] = useState<{
     paymentId: string;
     depositAddress: string;
@@ -32,7 +31,6 @@ function PaymentPage() {
         body: JSON.stringify({
           amount: Number.parseFloat(formData.amount),
           currency: formData.currency,
-          userWalletAddress: walletAddress || "pending",
           recipientName: formData.recipientName,
           recipientAccountNumber: formData.accountNumber,
           recipientSortCode: formData.sortCode,
@@ -48,12 +46,12 @@ function PaymentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
+    <div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
       <section className="relative py-12 px-6 text-center">
         <div className="relative max-w-3xl mx-auto">
           <h1 className="text-5xl font-black text-white mb-4">
-            <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+            <span className="bg-linear-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
               Furnel
             </span>
           </h1>
@@ -108,22 +106,6 @@ function PaymentPage() {
                 You'll buy this amount in USDC, then offramp to{" "}
                 {formData.currency}
               </p>
-            </div>
-
-            {/* Wallet Address */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
-              <label className="block text-gray-300 text-sm font-medium mb-2">
-                <CreditCard className="inline w-4 h-4 mr-1" />
-                Your Solana Wallet Address
-              </label>
-              <input
-                type="text"
-                value={walletAddress}
-                onChange={(e) => setWalletAddress(e.target.value)}
-                placeholder="Your Solana wallet address"
-                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none font-mono text-sm"
-                required
-              />
             </div>
 
             {/* Recipient Details */}
@@ -207,7 +189,7 @@ function PaymentPage() {
             {/* Submit */}
             <button
               type="submit"
-              className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2"
+              className="w-full py-4 bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2"
             >
               Continue to Buy USDC
               <ArrowRight className="w-5 h-5" />
@@ -258,10 +240,10 @@ function PaymentPage() {
 
             <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
               <h3 className="text-white font-semibold mb-2">
-                Step 2: Send USDC to Furnel
+                Deposit Address
               </h3>
               <p className="text-gray-400 text-sm mb-4">
-                After buying USDC, send it to this deposit address:
+                MoonPay will send USDC directly to this address:
               </p>
               <div className="bg-slate-900 rounded-lg p-4 font-mono text-sm text-cyan-400 break-all">
                 {paymentResult.depositAddress}
@@ -271,9 +253,9 @@ function PaymentPage() {
             <button
               type="button"
               onClick={() => setStep("confirm")}
-              className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold rounded-xl transition-all"
+              className="w-full py-4 bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold rounded-xl transition-all"
             >
-              I've Sent the USDC
+              I've Completed the Purchase
             </button>
           </div>
         )}
@@ -309,13 +291,13 @@ function PaymentPage() {
         )}
       </section>
 
-      {/* MoonPay Widget */}
+      {/* MoonPay Widget - sends USDC directly to Furnel deposit address */}
       <MoonPayBuyWidget
         variant="overlay"
         baseCurrencyCode="usd"
         baseCurrencyAmount={formData.amount || "100"}
         defaultCurrencyCode="usdc_sol"
-        walletAddress={walletAddress}
+        walletAddress={paymentResult?.depositAddress || ""}
         visible={showMoonPay}
         onClose={() => setShowMoonPay(false)}
       />

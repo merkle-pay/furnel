@@ -36,7 +36,6 @@ export interface PaymentInput {
   amount: number;
   currency: string;
   depositAddress: string;
-  userWalletAddress: string;
   redirectUrl: string;
   recipientBankDetails: {
     name: string;
@@ -79,11 +78,12 @@ export async function paymentWorkflow(input: PaymentInput): Promise<PaymentState
     await updatePaymentStatus(input.paymentId, state.status);
 
     // Step 3: Generate Offramp URL (redirect flow)
+    // Note: USDC is at Furnel's depositAddress, not user's wallet
     await updatePaymentStatus(input.paymentId, "GENERATING_OFFRAMP_URL");
     const offramp = await generateOfframpURL(
       input.amount,
       input.currency,
-      input.userWalletAddress,
+      input.depositAddress, // USDC is held at Furnel's deposit address
       input.paymentId, // Use paymentId as partnerUserId
       input.redirectUrl
     );
@@ -106,22 +106,15 @@ export async function paymentWorkflow(input: PaymentInput): Promise<PaymentState
 
     return state;
   } catch (error) {
-    // Compensation: Saga rollback
-    state.status = "COMPENSATING";
+    // Compensation: Mark as failed, requires manual intervention
+    // Since MoonPay sends directly to deposit address, refunds need manual handling
+    state.status = "FAILED";
     state.error = String(error);
     await updatePaymentStatus(input.paymentId, state.status);
 
-    try {
-      if (state.usdcReceived) {
-        await refundUSDC(input.amount, input.userWalletAddress);
-      }
-      state.status = "REFUNDED";
-    } catch (compensationError) {
-      state.status = "COMPENSATION_FAILED";
-      state.error = `Original: ${error}, Compensation: ${compensationError}`;
-    }
+    // Note: If USDC was received but offramp failed, manual refund is required
+    // The USDC is held at the deposit address until support resolves
 
-    await updatePaymentStatus(input.paymentId, state.status);
     return state;
   }
 }

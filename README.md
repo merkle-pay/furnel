@@ -4,17 +4,18 @@
 
 Open-source cross-border payment orchestration using stablecoin rails.
 
-```
-USDC (Solana) → Local Currency (fiat)
-```
+**User sees:** USD → GBP/EUR
+**Reality:** USD → [USDC] → GBP/EUR (crypto is invisible)
 
 ## How It Works
 
-1. User has USDC in their Solana wallet
-2. User initiates payment with recipient's bank details
-3. User sends USDC to Furnel
-4. Furnel offramps via Coinbase/Transak
+1. User enters amount (USD) and recipient bank details
+2. User pays with card via MoonPay widget
+3. MoonPay sends USDC directly to Furnel
+4. Furnel offramps via Coinbase
 5. Recipient receives local currency in their bank
+
+**No crypto wallet needed.** Users pay with card, recipients get bank transfer.
 
 All orchestrated by [Temporal](https://temporal.io/) with automatic retry, compensation (rollback), and full audit trail.
 

@@ -23,16 +23,15 @@ paymentRoutes.post("/", async (c) => {
   const {
     amount,
     currency,
-    userWalletAddress,
     recipientName,
     recipientAccountNumber,
     recipientSortCode,
     recipientIban,
   } = body;
 
-  if (!amount || !currency || !userWalletAddress) {
+  if (!amount || !currency) {
     return c.json(
-      { error: "Missing required fields: amount, currency, userWalletAddress" },
+      { error: "Missing required fields: amount, currency" },
       400
     );
   }
@@ -52,13 +51,12 @@ paymentRoutes.post("/", async (c) => {
     // Insert payment record
     await pool.query(
       `INSERT INTO payments (
-        id, user_wallet_address, deposit_address, amount, currency, status,
+        id, deposit_address, amount, currency, status,
         recipient_name, recipient_account_number, recipient_sort_code, recipient_iban,
         created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, 'INITIATED', $6, $7, $8, $9, NOW(), NOW())`,
+      ) VALUES ($1, $2, $3, $4, 'INITIATED', $5, $6, $7, $8, NOW(), NOW())`,
       [
         paymentId,
-        userWalletAddress,
         depositAddress,
         amount,
         currency,
@@ -79,7 +77,6 @@ paymentRoutes.post("/", async (c) => {
           amount,
           currency,
           depositAddress,
-          userWalletAddress,
           redirectUrl,
           recipientBankDetails: {
             name: recipientName,

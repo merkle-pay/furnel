@@ -4,26 +4,25 @@
 
 ## Overview
 
-An open-source Temporal workflow that orchestrates cross-border payments using stablecoin rails:
+An open-source Temporal workflow that orchestrates cross-border payments using stablecoin rails.
 
-```
-USDC (Solana) → Local Currency (fiat)
-```
-
-User acquires USDC on their own (via MoonPay, Coinbase, exchange, etc.). Furnel handles the offramp to local currency.
+**User sees:** USD → GBP/EUR
+**Reality:** USD → [USDC] → GBP/EUR (USDC is invisible)
 
 ## Payment Flow
 
 ```
-1. User has USDC in their Solana wallet
-2. User initiates payment (amount, recipient bank details)
-3. User sends USDC to Furnel's wallet
+1. User enters amount (USD) and recipient bank details
+2. User pays with card via MoonPay widget
+3. MoonPay converts USD → USDC and sends to Furnel's deposit address
 4. Furnel detects USDC received
-5. Furnel locks FX rate with offramp partner
-6. Furnel sends USDC to offramp partner (Coinbase/Transak)
-7. Offramp partner sends local currency to recipient's bank
-8. Confirm delivery, complete transaction
+5. Furnel locks FX rate with Coinbase
+6. User completes offramp on Coinbase (redirect flow)
+7. Coinbase sends local currency to recipient's bank
+8. Done - recipient receives GBP/EUR
 ```
+
+**Key principle:** Users never handle USDC directly. It's just the rail.
 
 ## Tech Stack
 
@@ -46,60 +45,59 @@ Both onramp (MoonPay) and offramp (Coinbase) happen in the **browser**, not on t
 │                         BROWSER                                  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  1. ONRAMP (optional)              2. OFFRAMP                   │
-│  ┌──────────────────┐              ┌──────────────────┐         │
-│  │   MoonPay Widget │              │  Coinbase Redirect│         │
-│  │   (iframe/popup) │              │  (new tab/window) │         │
-│  │                  │              │                   │         │
-│  │  USD → USDC      │              │  USDC → GBP/EUR  │         │
-│  └──────────────────┘              └──────────────────┘         │
+│  1. Payment Form        2. MoonPay Widget     3. Coinbase       │
+│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐  │
+│  │ Amount: $100 │  →   │  Pay with    │  →   │  Complete    │  │
+│  │ Recipient:   │      │  Card        │      │  Offramp     │  │
+│  │ John Doe     │      │              │      │              │  │
+│  │ Sort: 12-34  │      │  (popup)     │      │  (redirect)  │  │
+│  └──────────────┘      └──────────────┘      └──────────────┘  │
+│                                                                  │
+│  User never sees or handles USDC - it's invisible               │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
-                │                              ▲
-                │ User gets USDC               │ Server returns
-                │ in wallet                    │ offramp URL
-                ▼                              │
+                               │
+                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                         SERVER (Furnel)                          │
 ├─────────────────────────────────────────────────────────────────┤
-│  - Detect USDC deposit on Solana                                │
+│  - Generate unique deposit address                              │
+│  - MoonPay sends USDC directly to deposit address               │
+│  - Detect USDC on Solana                                        │
 │  - Generate Coinbase offramp URL                                │
 │  - Wait for webhook confirmation                                │
-│  - Track payment state                                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### MoonPay Onramp (Browser Widget)
 
-User buys USDC directly in the browser. Server is not involved.
+MoonPay widget sends USDC directly to Furnel's deposit address. User pays with card, never touches crypto.
 
-```javascript
-// Frontend code - embed MoonPay widget
-const moonpayUrl = `https://buy.moonpay.com?apiKey=${MOONPAY_API_KEY}&currencyCode=usdc_sol&walletAddress=${userWallet}`;
-window.open(moonpayUrl, '_blank');
+```tsx
+<MoonPayBuyWidget
+  baseCurrencyCode="usd"
+  baseCurrencyAmount="100"
+  defaultCurrencyCode="usdc_sol"
+  walletAddress={depositAddress}  // Furnel's address, not user's
+/>
 ```
-
-**Why browser-side?**
-- MoonPay handles KYC, card payments, compliance
-- No sensitive data on our server
-- User experience is seamless (widget/popup)
 
 ### Coinbase Offramp (Browser Redirect)
 
-Server generates URL, user clicks it and completes on Coinbase.
+Server generates URL, user clicks and completes on Coinbase.
 
 ```
 1. Server calls Coinbase API → gets offramp URL
 2. Frontend shows "Complete on Coinbase" button
 3. User clicks → redirected to Coinbase
 4. User completes sale on Coinbase UI
-5. Coinbase sends webhook → Server confirms
+5. Coinbase sends local currency to recipient's bank
 ```
 
-**Why redirect?**
-- Coinbase requires user authentication
-- KYC/bank linking handled by Coinbase
-- We just orchestrate, they handle compliance
+**Why this architecture?**
+- User never needs a crypto wallet
+- MoonPay/Coinbase handle KYC and compliance
+- USDC is just the invisible rail between fiat endpoints
 
 ## Provider Integration
 
@@ -232,13 +230,17 @@ If offramp fails after USDC received:
 
 ## Q&A
 
-**Q: How does user get USDC?**
+**Q: Does the user need a crypto wallet?**
 
-A: MoonPay widget in the browser. User clicks "Buy USDC" → MoonPay popup → pays with card → USDC lands in their Solana wallet. Server is not involved in onramp.
+A: No. User pays with card via MoonPay. USDC goes directly to Furnel's deposit address. User never handles crypto.
+
+**Q: Does the recipient know about USDC?**
+
+A: No. Recipient just receives local currency (GBP, EUR, etc.) in their bank account.
 
 **Q: KYC/AML requirements?**
 
-A: Not needed for us. Offramp partner (Coinbase/Transak) handles KYC. We're just orchestration middleware.
+A: Not needed for us. MoonPay handles onramp KYC, Coinbase handles offramp KYC. We're just orchestration middleware.
 
 **Q: Which blockchain for USDC?**
 
