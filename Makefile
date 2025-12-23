@@ -1,4 +1,4 @@
-.PHONY: tunnel up down clean health hash dev-up dev-down dev-logs
+.PHONY: push tunnel up down clean health hash dev-up dev-down dev-logs
 
 # Production
 up:
@@ -32,3 +32,7 @@ hash:
 
 tunnel:
 	cloudflared tunnel --url localhost:3000 run furnel-dev
+
+push:
+	git push origin main --tags
+	git push work main --tags
