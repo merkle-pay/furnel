@@ -1,4 +1,4 @@
-.PHONY: up down clean health hash dev-up dev-down dev-logs
+.PHONY: tunnel up down clean health hash dev-up dev-down dev-logs
 
 # Production
 up:
@@ -29,3 +29,6 @@ health:
 hash:
 	@read -p "Enter password: " pwd && \
 	docker run --rm caddy:2-alpine caddy hash-password --plaintext "$$pwd"
+
+tunnel:
+	cloudflared tunnel --url localhost:3000 run furnel-dev
