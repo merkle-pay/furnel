@@ -5,6 +5,7 @@
 Open-source cross-border payment orchestration using stablecoin rails.
 
 **User sees:** USD → GBP/EUR
+
 **Reality:** USD → [USDC] → GBP/EUR (crypto is invisible)
 
 ## How It Works
@@ -70,11 +71,11 @@ CADDY_ADMIN_HASH=$2a$14$...   # from: make hash
 
 ## API Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/payments` | Create new payment |
-| `GET` | `/api/payments/:id` | Get payment status |
-| `GET` | `/api/health` | Health check |
+| Method | Path                | Description        |
+| ------ | ------------------- | ------------------ |
+| `POST` | `/api/payments`     | Create new payment |
+| `GET`  | `/api/payments/:id` | Get payment status |
+| `GET`  | `/api/health`       | Health check       |
 
 ### Create Payment
 
@@ -168,24 +169,24 @@ make hash     # Generate password hash
 
 We chose [Temporal](https://temporal.io/) over alternatives (Bull/BullMQ, custom state machines, AWS Step Functions) for several reasons:
 
-| Requirement | Temporal Solution |
-|-------------|-------------------|
+| Requirement                | Temporal Solution                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------------- |
 | **Long-running workflows** | Native support for workflows lasting hours/days (waiting for USDC, offramp completion) |
-| **Automatic retries** | Built-in exponential backoff, configurable per-activity |
-| **State durability** | Workflow state survives crashes, restarts, deployments |
-| **Visibility** | Temporal UI shows real-time workflow status, history, pending activities |
-| **Compensation** | Saga pattern with tracked rollback steps |
-| **Signals/Queries** | External events (webhooks) can signal workflows; state queryable anytime |
+| **Automatic retries**      | Built-in exponential backoff, configurable per-activity                                |
+| **State durability**       | Workflow state survives crashes, restarts, deployments                                 |
+| **Visibility**             | Temporal UI shows real-time workflow status, history, pending activities               |
+| **Compensation**           | Saga pattern with tracked rollback steps                                               |
+| **Signals/Queries**        | External events (webhooks) can signal workflows; state queryable anytime               |
 
 **Trade-off:** Temporal adds operational complexity (separate server, database). Worth it for payment reliability.
 
 ### Why USDC on Solana?
 
-| Factor | Solana | Ethereum | Reason |
-|--------|--------|----------|--------|
-| **Fees** | ~$0.001 | $5-50 | Critical for small remittances |
-| **Finality** | ~400ms | ~12min | Better UX |
-| **USDC liquidity** | High | Highest | Both sufficient |
+| Factor             | Solana  | Ethereum | Reason                         |
+| ------------------ | ------- | -------- | ------------------------------ |
+| **Fees**           | ~$0.001 | $5-50    | Critical for small remittances |
+| **Finality**       | ~400ms  | ~12min   | Better UX                      |
+| **USDC liquidity** | High    | Highest  | Both sufficient                |
 
 **Trade-off:** Solana has occasional network congestion. Mitigated by retry logic.
 
@@ -197,6 +198,7 @@ Option B: Browser redirects (MoonPay/Coinbase handle funds) ✓
 ```
 
 We chose **Option B** because:
+
 1. **No money transmission license needed** — We never custody funds
 2. **KYC handled by partners** — MoonPay/Coinbase do compliance
 3. **Reduced liability** — Funds flow directly between user and partners
@@ -225,16 +227,16 @@ Signals allow external events to affect running workflows:
 
 ```typescript
 // Defined signals
-usdcReceivedSignal    // MoonPay webhook → workflow
-offrampCompletedSignal // Coinbase webhook → workflow
-cancelPaymentSignal    // User cancellation request
+usdcReceivedSignal; // MoonPay webhook → workflow
+offrampCompletedSignal; // Coinbase webhook → workflow
+cancelPaymentSignal; // User cancellation request
 ```
 
 **Usage:** When MoonPay webhook arrives, API can signal the workflow instead of relying solely on polling:
 
 ```typescript
 // In webhook handler
-await temporalClient.workflow.signalWithStart('paymentWorkflow', {
+await temporalClient.workflow.signalWithStart("paymentWorkflow", {
   workflowId: paymentId,
   signal: usdcReceivedSignal,
   signalArgs: [{ txHash, amount }],
@@ -247,8 +249,8 @@ Queries allow reading workflow state without affecting execution:
 
 ```typescript
 // Defined queries
-getPaymentStateQuery        // Current payment state
-getCompensationHistoryQuery // Saga steps for debugging
+getPaymentStateQuery; // Current payment state
+getCompensationHistoryQuery; // Saga steps for debugging
 ```
 
 **Usage:** API can query workflow state directly instead of relying on database:
@@ -293,10 +295,10 @@ Forward:  USDC_RECEIVED → FX_LOCKED → OFFRAMP_INITIATED
 Rollback: OFFRAMP_INITIATED → FX_LOCKED → USDC_RECEIVED
 ```
 
-| Step | Compensation Action |
-|------|---------------------|
-| `USDC_RECEIVED` | Refund USDC to user wallet |
-| `FX_LOCKED` | No action (rate expires naturally) |
+| Step                | Compensation Action                     |
+| ------------------- | --------------------------------------- |
+| `USDC_RECEIVED`     | Refund USDC to user wallet              |
+| `FX_LOCKED`         | No action (rate expires naturally)      |
 | `OFFRAMP_INITIATED` | Cancel with Coinbase or wait for expiry |
 
 ---
@@ -369,10 +371,10 @@ idx_payments_offramp_order_id -- Delivery confirmation lookup
 
 PRD mentioned a `transactions` table. We chose to embed transaction data in `payments`:
 
-| Approach | Pros | Cons |
-|----------|------|------|
-| Separate `transactions` table | Normalized, flexible | JOIN overhead, complexity |
-| Embedded in `payments` | Simple queries, fast | Less flexible for multi-tx |
+| Approach                      | Pros                 | Cons                       |
+| ----------------------------- | -------------------- | -------------------------- |
+| Separate `transactions` table | Normalized, flexible | JOIN overhead, complexity  |
+| Embedded in `payments`        | Simple queries, fast | Less flexible for multi-tx |
 
 **Decision:** Single USDC deposit + single offramp per payment. Embedding is simpler.
 
@@ -395,7 +397,7 @@ Peak (10x average) = ~6 payments/second
 ```yaml
 # Scale workers independently
 workers:
-  replicas: 3-10  # Based on activity throughput
+  replicas: 3-10 # Based on activity throughput
   resources:
     cpu: 1-2 cores
     memory: 512MB-1GB
@@ -424,7 +426,7 @@ Phase 3: Partitioning (if needed)
 ```typescript
 // Use PgBouncer or built-in pooling
 const pool = new Pool({
-  max: 20,              // Max connections per worker
+  max: 20, // Max connections per worker
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 });
@@ -457,7 +459,7 @@ const pool = new Pool({
 
 // Strategy: Queue requests, respect limits
 const rateLimiter = new RateLimiter({
-  moonpay: { maxPerMinute: 80 },   // 80% of limit
+  moonpay: { maxPerMinute: 80 }, // 80% of limit
   coinbase: { maxPerMinute: 8000 },
   solana: { maxPerSecond: 10 },
 });
@@ -491,12 +493,12 @@ Alerts:
 
 ### Cost Optimization
 
-| Component | Cost Driver | Optimization |
-|-----------|-------------|--------------|
-| Solana RPC | Request volume | Use dedicated node at scale |
-| Database | Storage, IOPS | Archive old data, optimize queries |
-| Temporal | Workflow history | Set retention policy (30 days) |
-| Coinbase | Per-transaction | Batch where possible |
+| Component  | Cost Driver      | Optimization                       |
+| ---------- | ---------------- | ---------------------------------- |
+| Solana RPC | Request volume   | Use dedicated node at scale        |
+| Database   | Storage, IOPS    | Archive old data, optimize queries |
+| Temporal   | Workflow history | Set retention policy (30 days)     |
+| Coinbase   | Per-transaction  | Batch where possible               |
 
 ---
 

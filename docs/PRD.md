@@ -26,15 +26,15 @@ An open-source Temporal workflow that orchestrates cross-border payments using s
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| **Orchestration** | Temporal |
-| **API** | Hono (Node.js) |
-| **Database** | PostgreSQL |
-| **Blockchain** | Solana (USDC-SPL) |
-| **Onramp** | MoonPay (browser widget) |
-| **Offramp** | Coinbase Offramp (browser redirect) |
-| **Reverse Proxy** | Caddy |
+| Component         | Technology                          |
+| ----------------- | ----------------------------------- |
+| **Orchestration** | Temporal                            |
+| **API**           | Hono (Node.js)                      |
+| **Database**      | PostgreSQL                          |
+| **Blockchain**    | Solana (USDC-SPL)                   |
+| **Onramp**        | MoonPay (browser widget)            |
+| **Offramp**       | Coinbase Offramp (browser redirect) |
+| **Reverse Proxy** | Caddy                               |
 
 ## Frontend Integration
 
@@ -78,7 +78,7 @@ MoonPay widget sends USDC directly to Furnel's deposit address. User pays with c
   baseCurrencyCode="usd"
   baseCurrencyAmount="100"
   defaultCurrencyCode="usdc_sol"
-  walletAddress={depositAddress}  // Furnel's address, not user's
+  walletAddress={depositAddress} // Furnel's address, not user's
 />
 ```
 
@@ -95,6 +95,7 @@ Server generates URL, user clicks and completes on Coinbase.
 ```
 
 **Why this architecture?**
+
 - User never needs a crypto wallet
 - MoonPay/Coinbase handle KYC and compliance
 - USDC is just the invisible rail between fiat endpoints
@@ -103,10 +104,10 @@ Server generates URL, user clicks and completes on Coinbase.
 
 ### Offramp: Coinbase / Transak
 
-| Provider | Fees | Coverage |
-|----------|------|----------|
-| **Coinbase Offramp** | 0% for USDC | US, EU, UK |
-| **Transak** | 1% | Global, 40+ cryptos |
+| Provider             | Fees        | Coverage            |
+| -------------------- | ----------- | ------------------- |
+| **Coinbase Offramp** | 0% for USDC | US, EU, UK          |
+| **Transak**          | 1%          | Global, 40+ cryptos |
 
 ### Coinbase Offramp Integration
 
@@ -147,11 +148,11 @@ PaymentWorkflow
 
 ### Alternative Providers
 
-| Provider | Best For |
-|----------|----------|
-| **Yellow Card** | Africa (20 countries) |
-| **Mural Pay** | LATAM (ARS, BRL, MXN) |
-| **Bitso** | Mexico, Argentina, Brazil |
+| Provider        | Best For                  |
+| --------------- | ------------------------- |
+| **Yellow Card** | Africa (20 countries)     |
+| **Mural Pay**   | LATAM (ARS, BRL, MXN)     |
+| **Bitso**       | Mexico, Argentina, Brazil |
 
 ## Technical Architecture
 
@@ -189,6 +190,7 @@ COMPLETED
 ### Compensation (Saga Pattern)
 
 If offramp fails after USDC received:
+
 1. Refund USDC to user's wallet
 
 ## Database Schema
@@ -227,6 +229,7 @@ If offramp fails after USDC received:
 - Rate limiting on external APIs
 - Idempotency keys everywhere
 - Batch processing optimization (future)
+- more payment methods for both senders and recipients
 
 ## Q&A
 
