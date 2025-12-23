@@ -125,6 +125,8 @@ services:
       - CDP_PROJECT_ID=${CDP_PROJECT_ID:-}
       - CDP_API_KEY_ID=${CDP_API_KEY_ID:-}
       - CDP_API_KEY_PRIVATE_KEY=${CDP_API_KEY_PRIVATE_KEY:-}
+      # Callback domain for Coinbase redirect
+      - CALLBACK_DOMAIN=${CALLBACK_DOMAIN:-http://localhost}
 
   web:
     build:

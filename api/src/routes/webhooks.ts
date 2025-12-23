@@ -283,32 +283,50 @@ webhookRoutes.post("/coinbase", async (c) => {
 // Offramp redirect callback
 // User is redirected here after completing offramp on Coinbase
 webhookRoutes.get("/coinbase/callback", async (c) => {
-  const quoteId = c.req.query("quote_id");
-  const status = c.req.query("status");
+  // Log all query params to see what Coinbase sends
+  const allParams = c.req.query();
+  console.log("Coinbase callback - all params:", JSON.stringify(allParams));
 
-  console.log(`Coinbase callback: quote_id=${quoteId}, status=${status}`);
+  const quoteId = c.req.query("quote_id") || c.req.query("quoteId");
+  const status = c.req.query("status") || "success"; // Default to success if not provided
+  const partnerUserId = c.req.query("partnerUserId") || c.req.query("partner_user_id");
 
-  if (!quoteId) {
-    return c.json({ error: "Missing quote_id" }, 400);
-  }
+  console.log(`Coinbase callback: quote_id=${quoteId}, status=${status}, partnerUserId=${partnerUserId}`);
 
   try {
-    // Update payment with callback info
-    await pool.query(
-      `UPDATE payments
-       SET offramp_callback_status = $2,
-           offramp_callback_at = NOW(),
-           updated_at = NOW()
-       WHERE quote_id = $1`,
-      [quoteId, status]
-    );
+    // Try to update payment by quote_id or partnerUserId (which is our payment ID)
+    if (quoteId) {
+      await pool.query(
+        `UPDATE payments
+         SET offramp_callback_status = $2,
+             offramp_callback_at = NOW(),
+             updated_at = NOW()
+         WHERE quote_id = $1`,
+        [quoteId, status]
+      );
+    } else if (partnerUserId) {
+      // partnerUserId is our payment ID
+      await pool.query(
+        `UPDATE payments
+         SET offramp_callback_status = $2,
+             offramp_callback_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [partnerUserId, status]
+      );
+    }
 
     // Redirect to frontend success/failure page
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3001";
-    if (status === "success") {
-      return c.redirect(`${frontendUrl}/payment/success?quote_id=${quoteId}`);
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost";
+    const identifier = quoteId || partnerUserId || "unknown";
+
+    if (status === "success" || status === "completed") {
+      return c.redirect(`${frontendUrl}/payment/success?id=${identifier}`);
+    } else if (status === "failed" || status === "error") {
+      return c.redirect(`${frontendUrl}/payment/failed?id=${identifier}`);
     } else {
-      return c.redirect(`${frontendUrl}/payment/failed?quote_id=${quoteId}`);
+      // Default: show success page with status
+      return c.redirect(`${frontendUrl}/payment/success?id=${identifier}&status=${status}`);
     }
   } catch (error) {
     console.error("Callback processing error:", error);

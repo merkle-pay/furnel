@@ -213,7 +213,9 @@ export async function generateOfframpURL(
   partnerUserId: string,
   redirectUrl: string
 ): Promise<{ offrampUrl: string; quoteId: string; expiresAt: Date }> {
-  console.log(`Generating offramp URL for ${amount} USDC → ${currency}`);
+  // Hardcode $5 for testing (FIAT_WALLET minimum is $1)
+  const offrampAmount = 5;
+  console.log(`Generating offramp URL for ${offrampAmount} USDC → ${currency} (requested: ${amount})`);
 
   const apiPath = "/onramp/v1/sell/quote";
   const token = await generateCDPToken(apiPath, "POST");
@@ -227,14 +229,14 @@ export async function generateOfframpURL(
     },
     body: JSON.stringify({
       sellCurrency: "USDC",
-      sellAmount: amount.toString(),
+      sellAmount: offrampAmount.toString(),
       sellNetwork: "solana",
       cashoutCurrency: currency,
-      paymentMethod: "ACH_BANK_ACCOUNT",
+      paymentMethod: "FIAT_WALLET",
       country: "US",
-      subdivision: "CA", // TODO: Make configurable
-      sourceAddress,
-      redirectUrl,
+      subdivision: "CA",
+      sourceAddress, // Solana address from FURNEL_DEPOSIT_ADDRESS
+      redirectUrl: `${process.env.CALLBACK_DOMAIN || "http://localhost"}/api/webhooks/coinbase/callback`,
       partnerUserId,
     }),
   });
@@ -246,6 +248,7 @@ export async function generateOfframpURL(
 
   const data = (await response.json()) as CoinbaseQuoteResponse;
 
+  console.log(`Coinbase API response:`, JSON.stringify(data, null, 2));
   console.log(`Offramp URL generated: ${data.quote_id}`);
   return {
     offrampUrl: data.offramp_url,
